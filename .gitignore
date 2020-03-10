@@ -1,0 +1,8 @@
+data/
+*.pdf
+*.nc
+scripts/core*
+scripts/old_scripts
+scripts/from_others
+
+
