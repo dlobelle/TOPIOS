@@ -19,8 +19,6 @@ import operator
 from numpy import *
 import scipy.linalg
 import math as math
-
-
 #warnings.filterwarnings("ignore")
 
 lon = np.array([-161,-159]) 
@@ -47,8 +45,6 @@ with open('/home/dlobelle/data/Kooi_input/profiles_t.pickle', 'rb') as p:
     depth,time,A_A_t,mu_A_t = pickle.load(p)
 
 time = np.linspace(time0,total_secs,dt_secs+1)
-#print(time)
-#print(time.shape)
 
 """ Defining the particle class """
 
@@ -105,7 +101,7 @@ def Kooi(particle,fieldset,time):
     t = particle.temp            # [oC]
     sw_visc = particle.sw_visc   # [kg m-1 s-1]
     aa = particle.aa             # [no m-3]
-    mu_aa = particle.mu_aa/86400.       # [s-1] : check, is it growth rate?
+    mu_aa = particle.mu_aa/86400.       # [s-1] 
     kin_visc = particle.kin_visc # [m2 s-1]
     rho_sw = particle.rho_sw     # [kg m-3]
     a = particle.a # [no. m-2 s-1]
@@ -140,7 +136,6 @@ def Kooi(particle,fieldset,time):
     particle.rho_tot = (r_pl**3. * rho_pl + ((r_pl + t_bf)**3. - r_pl**3.)*rho_bf)/(r_pl + t_bf)**3. # total density [kg m-3]
     rho_tot = particle.rho_tot
     theta_tot = 4.*math.pi*r_tot**2.                # surface area of total [m2]
-#     print(rho_tot)
     d_pl = k * (t + 273.16)/(6. * math.pi * sw_visc * r_tot)  # diffusivity of plastic particle [m2 s-1]
     d_a = k * (t + 273.16)/(6. * math.pi * sw_visc * r_a)     # diffusivity of algal cells [m2 s-1] 
     beta_abrown = 4.*math.pi*(d_pl + d_a)*(r_tot + r_a)       # Brownian motion [m3 s-1] 
@@ -148,27 +143,10 @@ def Kooi(particle,fieldset,time):
     beta_aset = (1./2.)*math.pi*r_tot**2. * abs(vs)                  # differential settling [m3 s-1]
     beta_a = beta_abrown + beta_ashear + beta_aset           # collision rate [m3 s-1]
     
-#     print(vs)
-#     test = abs(vs)
-#     print(test)
-#     print(aa)
-#     print(a)
-#     print(beta_abrown)
-#     print(beta_ashear)
-#     print(beta_aset)
-#     print(beta_a)
-    
     a_coll = (beta_a*aa)/theta_pl
     a_growth = mu_aa*a
     a_mort = m_a*a
-    a_resp = (q10**((t-20.)/10.))*r20*a    
-    
-#     print(aa)
-#     print(a_coll)
-#     print(a_growth)
-#     print(a_mort)
-#     print(a_resp)
-    
+    a_resp = (q10**((t-20.)/10.))*r20*a     
     
     particle.a += (a_coll + a_growth - a_mort - a_resp) * particle.dt
 
@@ -198,12 +176,6 @@ def Kooi(particle,fieldset,time):
     z = particle.depth
     dt = particle.dt
     
-#     print(z)
-#     print(vs)
-#     print(dt)
-    
-#     test = particle.a
-#     print(test)
     
 """ Defining the fieldset"""
 
