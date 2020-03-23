@@ -30,6 +30,7 @@ simhours = 1
 simmins = 30
 secsdt = 10
 hrsoutdt = 10
+z_release = 1.
 
 #------ CHOOSE -----
 rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
@@ -367,7 +368,8 @@ lons = fieldset.U.lon
 lats = fieldset.U.lat
 depths = fieldset.U.depth
 
-with open('/home/dlobelle/Kooi_project/data/Kooi_input/profiles.pickle', 'rb') as f:
+
+with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
     depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
 
 kv_or = np.transpose(np.tile(np.array(upsilon_z),(len(lats),len(lons),1,1)), (2,3,0,1)) # kinematic viscosity
@@ -414,13 +416,13 @@ pset = ParticleSet.from_list(fieldset=fieldset,       # the fields on which the 
                              lon= lons[1,1], #-160.,  # a vector of release longitudes 
                              lat=lats[1,1], #36., 
                              time = [0],
-                             depth = [1.])
+                             depth = z_release)
 
 """ Kernal + Execution"""
 
 kernels = pset.Kernel(AdvectionRK4_3D_vert) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #+ pset.Kernel(Sink) # pset.Kernel(AdvectionRK4_3D_vert) 
 
-dirwrite = '/home/dlobelle/Kooi_project/data/Kooi_output/tests/'
+dirwrite = '/home/dlobelle/Kooi_data/data_output/tests/'
 outfile = dirwrite + 'Kooi+NEMO_1DwithWadv_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt)) #120
