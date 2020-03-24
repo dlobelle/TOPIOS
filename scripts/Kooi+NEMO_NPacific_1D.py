@@ -403,7 +403,7 @@ i1 = np.transpose(np.tile(id_,(3,3,1,1)),(2,3,0,1))
 dz1 = np.transpose(np.tile(dz,(3,3,1,1)),(2,3,0,1))
 tpp_or= (p1*i1)/dz1
 
-
+print(tpp_or.shape,tpp_or)
 tpp = Field('tpp',tpp_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='U'
         
 fieldset.add_field(tpp)

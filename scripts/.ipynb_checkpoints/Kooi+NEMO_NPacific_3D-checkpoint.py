@@ -21,10 +21,15 @@ import scipy.linalg
 import math as math
 warnings.filterwarnings("ignore")
 
-minlat = 22 #36
-maxlat = 48
-minlon = -172 #-160
-maxlon = -136
+minlat = 30 #22 #36
+maxlat = 40 #48
+minlon = -165 #172 #-160
+maxlon = -155 #136
+
+lon_release = np.linspace(minlon+1,maxlon,10) #np.tile(np.linspace(minlon+1,maxlon,10),[10,1])
+lat_release =  np.linspace(minlat+1,maxlat,10)# np.tile(np.linspace(minlat+1,maxlat,10),[10,1])
+#lat_release = lat_release0.T
+z_release = [1]*10 #np.tile(1,[10,10])
 
 simdays = 10
 time0 = 0
@@ -32,15 +37,15 @@ simhours = 1
 simmins = 30
 secsdt = 10
 hrsoutdt = 10
-z_release = 100.
 
-#------ CHOOSE -----
+
+#------ Choose below: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL -----
 rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
 r_pl = "1e-04"                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
 
 """ Defining the particle class """
 
-class plastic_particle(JITParticle): #ScipyParticle
+class plastic_particle(JITParticle): #ScipyParticle): #
     u = Variable('u', dtype=np.float32,to_write=False)
     v = Variable('v', dtype=np.float32,to_write=False)
     w = Variable('w', dtype=np.float32,to_write=True)
@@ -48,12 +53,12 @@ class plastic_particle(JITParticle): #ScipyParticle
     density = Variable('density',dtype=np.float32,to_write=True)
     #aa = Variable('aa',dtype=np.float32,to_write=True)
     tpp = Variable('tpp',dtype=np.float32,to_write=False) # mu_aa
-    euph_z = Variable('euph_z',dtype=np.float32,to_write=False)
+    #euph_z = Variable('euph_z',dtype=np.float32,to_write=False)
     d_phy = Variable('d_phy',dtype=np.float32,to_write=False)
     nd_phy = Variable('nd_phy',dtype=np.float32,to_write=False)    
     kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
     sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
-    a = Variable('a',dtype=np.float32,to_write=True)
+    a = Variable('a',dtype=np.float32,to_write=False)
     vs = Variable('vs',dtype=np.float32,to_write=True)    
     
 """functions and kernals"""
@@ -70,15 +75,7 @@ def getclosest_ij(lats,lons,latpt,lonpt):
     minindex_flattened = dist_sq.argmin()                       # 1D index of minimum dist_sq element
     return np.unravel_index(minindex_flattened, lats.shape)     # Get 2D index for latvals and lonvals arrays from 1D index
 
-# def Sink(particle, fieldset, time):
-#     """Kernal for sinking (to be changed with Kooi equation later)"""
-#     #print(particle.depth)
-# #    particle.depth = 30#particle.depth + fieldset.sinkspeed * particle.dt
-# #    w1 = fieldset.W[time, particle.depth, particle.lat, particle.lon]  
-#     sp = 10./86400. #The sinkspeed m/day (CAN CHANGE THIS LATER- in Kooi et al. 2017 for particle of 0.1mm = 100 m d-1)
-#     particle.depth += sp * particle.dt #(sp/(24*60*60)) * particle.dt # m/s : 1e-3
-
-def AdvectionRK4_3D_vert(particle, fieldset, time):
+def AdvectionRK4_3D_vert(particle, fieldset, time): # adapting AdvectionRK4_3D kernal to only vertical velocity 
     """Advection of particles using fourth-order Runge-Kutta integration including vertical velocity.
     Function needs to be converted to Kernel object before execution"""
     (w1) = fieldset.W[time, particle.depth, particle.lat, particle.lon]
@@ -187,16 +184,15 @@ def Profiles(particle, fieldset, time):
     particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
     particle.d_phy= fieldset.d_phy[time, particle.depth,particle.lat,particle.lon]  
     particle.nd_phy= fieldset.nd_phy[time, particle.depth,particle.lat,particle.lon] 
-    particle.tpp = fieldset.tpp[time, particle.depth,particle.lat,particle.lon]
-    particle.euph_z = fieldset.euph_z[time, particle.depth,particle.lat,particle.lon]
+    #particle.tpp = fieldset.tpp[time,particle.lat,particle.lon]
+    #particle.euph_z = fieldset.euph_z[time,particle.lat,particle.lon]
     particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
     particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
     particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
     
 def Kooi(particle,fieldset,time):  
     # 30/01/20- for aa and mu_aa, using ratios to get ambient algal concentrations and algal growth (N:C:AA using Redfield ratio... C:N = 6.625, so N*6.625)
-    
-    # 
+     
     min_N2cell = 2656.0e-09 #[mgN cell-1] 35339e-09 [mgC cell-1]
     max_N2cell = 11.0e-09   #[mgN cell-1] 47.67e-09 [mgC cell-1]
     med_N2cell = 356.04e-09
@@ -212,35 +208,6 @@ def Kooi(particle,fieldset,time):
     #else:
     #    aa = c2   # should be [no m-3] to compare to Kooi model    
     #particle.aa = aa
-    
-    # for 3D, need to find av primary production in euphotic layer for each grid point 
-    tpp0 = particle.tpp
-    euph_z0 = particle.euph_z
-    
-    z_all = [0, 1.023907, 2.10319, 3.251309, 4.485053, 5.825238, 7.297443, 
-    8.932686, 10.7679, 12.84599, 15.21527, 17.92792, 21.03757, 24.59599, 
-    28.64965, 33.23697, 38.3871, 44.12101, 50.45447, 57.40257, 64.9846, 
-    73.2287, 82.17556, 91.88141, 102.4202, 113.8852, 126.3909, 140.074, 
-    155.095, 171.6402, 189.9228, 210.1845, 232.697, 257.7629, 285.7158, 
-    316.9199, 351.768, 390.6786, 434.0905, 482.4563, 536.2332, 595.8721, 
-    661.8052, 734.4321, 814.1057, 901.118, 995.6885, 1097.954, 1207.963, 
-    1325.672, 1450.95, 1583.582, 1723.28, 1869.693, 2022.425, 2181.044, 
-    2345.101, 2514.137, 2687.699, 2865.347, 3046.659, 3231.24, 3418.723, 
-    3608.769, 3801.072, 3995.354, 4191.367, 4388.89, 4587.726, 4787.702, 
-    4988.667, 5190.488, 5393.049, 5596.249, 5800] # depth levels of NEMO 
-    
-    id_ = z_all < euph_z0
-    nemo_euph = z_all[id_]
-
-    dz = [] #np.zeros(len(z_all))
-    for z in range(len(nemo_euph)+1):
-         dz[z] = (z_all[z+1]-z_all[z])
-
-    # e1 = np.tile(np.array(euph_z1),(1,len(z_all),3,3))
-    # p1 = np.tile(np.array(tot_phy_ml),(1,len(z_all),3,3))
-    # i1 = np.transpose(np.tile(id_,(3,3,1,1)),(2,3,0,1))
-    # dz1 = np.transpose(np.tile(dz,(3,3,1,1)),(2,3,0,1))
-    # tpp_or= (p1*i1)/dz1
     
     n0 = particle.nd_phy+particle.d_phy # mmol N m-3 
     n = n0*14.007       # conversion from mmol N m-3 to mg N m-3 (atomic weight of 1 mol of N = 14.007 g)   
@@ -259,7 +226,7 @@ def Kooi(particle,fieldset,time):
         mu_aa = 0.
     else:
         mu_aa = mu_n2/86400. # conversion from d-1 to s-1
-    #print(mu_aa)
+        
     z = particle.depth           # [m]
     t = particle.temp            # [oC]
     sw_visc = particle.sw_visc   # [kg m-1 s-1]
@@ -356,8 +323,8 @@ filenames = {'U': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': 
              'W': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': [wfiles]},
              'd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': pfiles},
              'nd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': pfiles},  
-             'euph_z': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles},
-             'tpp': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles}, # 'depth': wfiles,
+             #'euph_z': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles},
+             #'tpp': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles}, # 'depth': wfiles,
              'cons_temperature': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': tsfiles},
              'abs_salinity': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': tsfiles}}
 
@@ -367,8 +334,8 @@ variables = {'U': 'uo',
              'W': 'wo',
              'd_phy': 'PHD',
              'nd_phy': 'PHN',
-             'euph_z': 'MED_XZE',
-             'tpp': 'PRN', #TPP3', # AAmu
+             #'euph_z': 'MED_XZE',
+             #'tpp': 'PRN', #TPP3', # AAmu
              'cons_temperature': 'potemp',
              'abs_salinity': 'salin'}
 
@@ -377,8 +344,8 @@ dimensions = {'U': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': '
               'W': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': 'time_centered'},
               'd_phy': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_centered'},
               'nd_phy': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_centered'},
-              'euph_z': {'lon': 'glamf', 'lat': 'gphif','time': 'time_centered'},
-              'tpp': {'lon': 'glamf', 'lat': 'gphif','time': 'time_centered'}, # 'depth': 'depthw',
+              #'euph_z': {'lon': 'glamf', 'lat': 'gphif','time': 'time_centered'},
+              #'tpp': {'lon': 'glamf', 'lat': 'gphif','time': 'time_centered'}, # 'depth': 'depthw',
               'cons_temperature': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_centered'},
               'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_centered'}}
 
@@ -413,20 +380,34 @@ fieldset.add_field(SV)
 
 # ------------- Using average diatom or non-diatom PP instead of TPP3 -----------
 
-# pp_orig = xr.open_dataset(ppfiles)
-# euph_z,nd_phy_ml,d_phy_ml = pp_orig.variables['MED_XZE'], pp_orig.variables['PRN'], pp_orig.variables['PRD']
+pp_orig = xr.open_dataset(ppfiles)
+euph_z,nd_phy_ml,d_phy_ml = pp_orig.variables['MED_XZE'], pp_orig.variables['PRN'], pp_orig.variables['PRD']
 
-# z_all = Depth.data # depth levels of NEMO 
-# euph_z1 = euph_z[:,iy_min+1,ix_min+1].data #50 # selecting euph layer depth where particle released
-# tot_phy_ml = nd_phy_ml[:,iy_min+1,ix_min+1].data + d_phy_ml[:,iy_min+1,ix_min+1].data 
-# id_ = z_all < euph_z1
+z_nemo = Depth.data # depth levels of NEMO 
+euph_z1 = euph_z[:,iy_min:iy_max,ix_min:ix_max].data #euph_z[:,iy_min+1,ix_min+1].data #50 # selecting euph layer depth where particle released
+tot_phy_ml = nd_phy_ml[:,iy_min:iy_max,ix_min:ix_max].data + d_phy_ml[:,iy_min:iy_max,ix_min:ix_max].data 
 
-# nemo_euph = z_all[id_]
+z_all = np.transpose(np.tile(np.array(z_nemo),(len(lats),len(lats[0]),1)), (2,0,1))
+id_ = z_all < euph_z1
+nemo_euph = z_all[id_]
 
-# dz = np.zeros(len(z_all))
-# for z in range(len(nemo_euph)+1):
-#     dz[z] = (z_all[z+1]-z_all[z])
+d = (len(z_all),len(z_all[0]),len(z_all[0][0]))
+dz = np.zeros(d)
 
+for z in range(len(dz)):
+    if z == 0:
+        dz[z] = (z_all[z+1]-z_all[z])
+    elif z == 74:
+        dz[z] = (z_all[z]-z_all[z-1])
+    else:
+        dz[z] = ((z_all[z]-z_all[z-1])/2)+((z_all[z+1]-z_all[z])/2) #(z_all[z+1]-z_all[z])
+
+# print(dz.shape)
+# print(tot_phy_ml.shape)
+# print(id_.shape)
+tpp_or = (tot_phy_ml*id_)/dz
+
+print(tpp_or.shape,tpp_or[:,0,0])
 # e1 = np.tile(np.array(euph_z1),(1,len(z_all),3,3))
 # p1 = np.tile(np.array(tot_phy_ml),(1,len(z_all),3,3))
 # i1 = np.transpose(np.tile(id_,(3,3,1,1)),(2,3,0,1))
@@ -434,26 +415,26 @@ fieldset.add_field(SV)
 # tpp_or= (p1*i1)/dz1
 
 
-# tpp = Field('tpp',tpp_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='U'
+tpp = Field('tpp',tpp_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='U'
         
-# fieldset.add_field(tpp)
+fieldset.add_field(tpp)
 
 
 """ Defining the particle set """
 
 pset = ParticleSet.from_list(fieldset=fieldset,       # the fields on which the particles are advected
                              pclass=plastic_particle, # the type of particles (JITParticle or ScipyParticle)
-                             lon= -160.,  # a vector of release longitudes 
-                             lat= 36., 
+                             lon= lon_release, #-160.,  # a vector of release longitudes 
+                             lat= lat_release, #36., 
                              time = [0],
                              depth = z_release) #[1.]
 
 """ Kernal + Execution"""
 
-kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #+ pset.Kernel(Sink) # pset.Kernel(AdvectionRK4_3D_vert) 
+kernels = pset.Kernel(AdvectionRK4_3D_vert) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #+ pset.Kernel(Sink) # pset.Kernel(AdvectionRK4_3D_vert) 
 
 dirwrite = '/home/dlobelle/Kooi_data/data_output/tests/'
-outfile = dirwrite + 'Kooi+NEMO_3D_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
+outfile = dirwrite + 'Kooi+NEMO_3DwWadv_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt)) #120
 
