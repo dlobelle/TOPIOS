@@ -26,17 +26,17 @@ maxlat = 40 #48
 minlon = -165 #172 #-160
 maxlon = -155 #136
 
-lon_release = np.linspace(minlon+1,maxlon,10) #np.tile(np.linspace(minlon+1,maxlon,10),[10,1])
-lat_release =  np.linspace(minlat+1,maxlat,10)# np.tile(np.linspace(minlat+1,maxlat,10),[10,1])
-#lat_release = lat_release0.T
-z_release = [1]*10 #np.tile(1,[10,10])
+#lat_release0 = np.tile(np.linspace(minlat+1,maxlat-1,9),[9,1]) #np.linspace(minlat+1,maxlat,10)# 
+lat_release = 35 #lat_release0.T
+lon_release = -160 #np.tile(np.linspace(minlon+1,maxlon-1,9),[9,1]) #np.linspace(minlon+1,maxlon,10) #
+z_release = 1. #np.tile(1,[9,9]) #[1]*10 #
 
-simdays = 10
+simdays = 100
 time0 = 0
 simhours = 1
 simmins = 30
-secsdt = 10
-hrsoutdt = 10
+secsdt = 30
+hrsoutdt = 5
 
 
 #------ Choose below: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL -----
@@ -52,7 +52,7 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     temp = Variable('temp',dtype=np.float32,to_write=False)
     density = Variable('density',dtype=np.float32,to_write=True)
     #aa = Variable('aa',dtype=np.float32,to_write=True)
-    tpp = Variable('tpp',dtype=np.float32,to_write=False) # mu_aa
+    tpp = Variable('tpp',dtype=np.float32,to_write=True) # mu_aa
     #euph_z = Variable('euph_z',dtype=np.float32,to_write=False)
     d_phy = Variable('d_phy',dtype=np.float32,to_write=False)
     nd_phy = Variable('nd_phy',dtype=np.float32,to_write=False)    
@@ -184,7 +184,7 @@ def Profiles(particle, fieldset, time):
     particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
     particle.d_phy= fieldset.d_phy[time, particle.depth,particle.lat,particle.lon]  
     particle.nd_phy= fieldset.nd_phy[time, particle.depth,particle.lat,particle.lon] 
-    #particle.tpp = fieldset.tpp[time,particle.lat,particle.lon]
+    particle.tpp = fieldset.tpp[time,particle.depth,particle.lat,particle.lon]
     #particle.euph_z = fieldset.euph_z[time,particle.lat,particle.lon]
     particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
     particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
@@ -217,7 +217,9 @@ def Kooi(particle,fieldset,time):
         aa = 0.
     else:
         aa = n2   # [no m-3] to compare to Kooi model    
-
+    
+    test = particle.tpp
+    #print(test)
     mu_n0 = particle.tpp/aa    
     mu_n = mu_n0*14.007               # conversion from mmol N m-3 d-1 to mg N m-3 d-1 (atomic weight of 1 mol of N = 14.007 g) 
     mu_n2 = mu_n/med_N2cell           # conversion from mg N m-3 d-1 to d-1
@@ -372,7 +374,7 @@ v_lat = np.array([minlat,maxlat]) #,[minlat,maxlat]])
 
 kv_or = np.transpose(np.tile(np.array(upsilon_z),(len(v_lon),len(v_lat),1)), (2,0,1)) # kinematic viscosity
 sv_or = np.transpose(np.tile(np.array(mu_z),(len(v_lon),len(v_lat),1)), (2,0,1)) # dynamic viscosity of seawater    
-
+#print(kv_or.shape)
 KV = Field('KV',kv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
 SV = Field('SV',sv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
 fieldset.add_field(KV)
@@ -402,12 +404,10 @@ for z in range(len(dz)):
     else:
         dz[z] = ((z_all[z]-z_all[z-1])/2)+((z_all[z+1]-z_all[z])/2) #(z_all[z+1]-z_all[z])
 
-# print(dz.shape)
-# print(tot_phy_ml.shape)
-# print(id_.shape)
-tpp_or = (tot_phy_ml*id_)/dz
 
-print(tpp_or.shape,tpp_or[:,0,0])
+tpp_or1 = (tot_phy_ml*id_)/dz
+tpp_or = np.tile(tpp_or1,(1,1,1,1))
+
 # e1 = np.tile(np.array(euph_z1),(1,len(z_all),3,3))
 # p1 = np.tile(np.array(tot_phy_ml),(1,len(z_all),3,3))
 # i1 = np.transpose(np.tile(id_,(3,3,1,1)),(2,3,0,1))
@@ -431,10 +431,10 @@ pset = ParticleSet.from_list(fieldset=fieldset,       # the fields on which the 
 
 """ Kernal + Execution"""
 
-kernels = pset.Kernel(AdvectionRK4_3D_vert) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #+ pset.Kernel(Sink) # pset.Kernel(AdvectionRK4_3D_vert) 
+kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #+ pset.Kernel(Sink) # pset.Kernel(AdvectionRK4_3D_vert) 
 
 dirwrite = '/home/dlobelle/Kooi_data/data_output/tests/'
-outfile = dirwrite + 'Kooi+NEMO_3DwWadv_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
+outfile = dirwrite + 'Kooi+NEMO_3Dgrid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt)) #120
 
