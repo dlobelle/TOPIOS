@@ -387,7 +387,7 @@ iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat, minlon)
 iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat, maxlon)
 indices = {'lon': range(ix_min, ix_max), 'lat': range(iy_min, iy_max)}
 
-fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=True, indices=indices) #allow_time_extrapolation=True
+fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=True, indices=indices) #allow_time_extrapolation=False
 
 # lons = fieldset.U.lon
 # lats = fieldset.U.lat
