@@ -26,12 +26,12 @@ maxlat = 40 #48
 minlon = -165 #172 #-160
 maxlon = -155 #136
 
-#lat_release0 = np.tile(np.linspace(minlat+1,maxlat-1,9),[9,1]) #np.linspace(minlat+1,maxlat,10)# 
-lat_release = 35 #lat_release0.T
-lon_release = -160 #np.tile(np.linspace(minlon+1,maxlon-1,9),[9,1]) #np.linspace(minlon+1,maxlon,10) #
-z_release = 1. #np.tile(1,[9,9]) #[1]*10 #
+lat_release0 = np.tile(np.linspace(minlat+1,maxlat-1,9),[9,1]) #np.linspace(minlat+1,maxlat,10)# 
+lat_release = lat_release0.T #35 #
+lon_release = np.tile(np.linspace(minlon+1,maxlon-1,9),[9,1]) #np.linspace(minlon+1,maxlon,10) # -160 #
+z_release = np.tile(1,[9,9]) #[1]*10 # 1. #
 
-simdays = 10
+simdays = 30
 time0 = 0
 simhours = 1
 simmins = 30
@@ -188,13 +188,18 @@ def Profiles(particle, fieldset, time):
     particle.nd_phy= fieldset.nd_phy[time, particle.depth,particle.lat,particle.lon] 
     #particle.d_tpp = fieldset.d_tpp[time,particle.depth,particle.lat,particle.lon]
     #particle.nd_tpp = fieldset.nd_tpp[time,particle.depth,particle.lat,particle.lon]
-    particle.tpp3 = fieldset.nd_tpp[time,particle.depth,particle.lat,particle.lon]
+    particle.tpp3 = fieldset.tpp3[time,particle.depth,particle.lat,particle.lon]
     particle.euph_z = fieldset.euph_z[time,particle.depth,particle.lat,particle.lon]
     particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
     particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
     particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
     
 def Kooi(particle,fieldset,time):  
+    #------ CHOOSE -----
+    rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
+    r_pl = 1e-04                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
+    
+    
     # 30/01/20- for aa and mu_aa, using ratios to get ambient algal concentrations and algal growth (N:C:AA using Redfield ratio... C:N = 6.625, so N*6.625)
      
     min_N2cell = 2656.0e-09 #[mgN cell-1] 35339e-09 [mgC cell-1]
@@ -251,9 +256,7 @@ def Kooi(particle,fieldset,time):
     vs = particle.vs #particle.depth # [m s-1]
 
     
-    #------ CHOOSE -----
-    rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-    r_pl = 1e-04                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
+
 
     #------ Constants and algal properties -----
     g = 7.32e10/(86400.**2.)    # gravitational acceleration (m d-2), now [s-2]
@@ -325,33 +328,45 @@ dirread = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/means/
 dirread_bgc = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA_BGC/ORCA0083-N006/means/'  
 dirread_mesh = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/domain/'  
 
-ufiles = (dirread+'ORCA0083-N06_20070105d05U.nc') #0105
-vfiles = (dirread+'ORCA0083-N06_20070105d05V.nc')
-wfiles = (dirread+'ORCA0083-N06_20070105d05W.nc')
-pfiles = (dirread_bgc+'ORCA0083-N06_20070105d05P.nc')
-ppfiles = (dirread_bgc+'ORCA0083-N06_20070105d05D.nc')
-tsfiles = (dirread+'ORCA0083-N06_20070105d05T.nc')
+# ufiles = (dirread+'ORCA0083-N06_20070105d05U.nc') #0105
+# vfiles = (dirread+'ORCA0083-N06_20070105d05V.nc')
+# wfiles = (dirread+'ORCA0083-N06_20070105d05W.nc')
+# pfiles = (dirread_bgc+'ORCA0083-N06_20070105d05P.nc')
+# ppfiles = (dirread_bgc+'ORCA0083-N06_20070105d05D.nc')
+# tsfiles = (dirread+'ORCA0083-N06_20070105d05T.nc')
+# mesh_mask = dirread_mesh+'coordinates.nc'
+
+ufiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05U.nc')) #0105d05
+vfiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05V.nc'))
+wfiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05W.nc'))
+pfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_2007*d05P.nc'))
+ppfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_2007*d05D.nc'))
+tsfiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05T.nc'))
 mesh_mask = dirread_mesh+'coordinates.nc'
 
-# ufiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05U.nc')) #0105d05
-# vfiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05V.nc'))
-# wfiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05W.nc'))
-# pfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_2007*d05P.nc'))
-# ppfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_2007*d05D.nc'))
-# tsfiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05T.nc'))
-#mesh_mask = dirread_mesh+'coordinates.nc'
+# filenames = {'U': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': ufiles},
+#              'V': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': vfiles},
+#              'W': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': wfiles},
+#              'd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': pfiles},
+#              'nd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': pfiles},  
+#              'euph_z': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles},
+#              #'d_tpp': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles}, # 'depth': wfiles,
+#              #'nd_tpp': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles},
+#              'tpp3': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': ppfiles},
+#              'cons_temperature': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': tsfiles},
+#              'abs_salinity': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': tsfiles}}
 
-filenames = {'U': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': ufiles},
-             'V': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': vfiles},
-             'W': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': wfiles},
-             'd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': pfiles},
-             'nd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': pfiles},  
+filenames = {'U': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': ufiles},
+             'V': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': vfiles},
+             'W': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': wfiles},
+             'd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': pfiles},
+             'nd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': pfiles},  
              'euph_z': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles},
              #'d_tpp': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles}, # 'depth': wfiles,
              #'nd_tpp': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles},
-             'tpp3': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': ppfiles},
-             'cons_temperature': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': tsfiles},
-             'abs_salinity': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': tsfiles}}
+             'tpp3': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': ppfiles},
+             'cons_temperature': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles},
+             'abs_salinity': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles}}
 
 
 variables = {'U': 'uo',
@@ -387,7 +402,7 @@ iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat, minlon)
 iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat, maxlon)
 indices = {'lon': range(ix_min, ix_max), 'lat': range(iy_min, iy_max)}
 
-fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=True, indices=indices) #allow_time_extrapolation=False
+fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, indices=indices) #allow_time_extrapolation=True or False
 
 # lons = fieldset.U.lon
 # lats = fieldset.U.lat
@@ -446,7 +461,7 @@ pset = ParticleSet.from_list(fieldset=fieldset,       # the fields on which the 
                              pclass=plastic_particle, # the type of particles (JITParticle or ScipyParticle)
                              lon= lon_release, #-160.,  # a vector of release longitudes 
                              lat= lat_release, #36., 
-                             time = [0],
+                             time = time0,
                              depth = z_release) #[1.]
 
 """ Kernal + Execution"""
@@ -454,7 +469,7 @@ pset = ParticleSet.from_list(fieldset=fieldset,       # the fields on which the 
 kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #+ pset.Kernel(Sink) # pset.Kernel(AdvectionRK4_3D_vert) 
 
 dirwrite = '/home/dlobelle/Kooi_data/data_output/tests/'
-outfile = dirwrite + 'Kooi+NEMO_3D_testTPPkernal_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
+outfile = dirwrite + 'Kooi+NEMO_3Dgrid10by10_wTPP3_TEfalse_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt)) #120
 
