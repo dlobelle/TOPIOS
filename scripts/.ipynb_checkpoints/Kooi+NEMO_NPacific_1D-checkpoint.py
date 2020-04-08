@@ -24,11 +24,11 @@ warnings.filterwarnings("ignore")
 minlat = 36
 minlon = -160
 
-simdays = 10
+simdays = 150
 time0 = 0
 simhours = 1
 simmins = 30
-secsdt = 10
+secsdt = 30
 hrsoutdt = 10
 z_release = 1.
 
@@ -45,7 +45,10 @@ class plastic_particle(JITParticle): #ScipyParticle
     temp = Variable('temp',dtype=np.float32,to_write=False)
     density = Variable('density',dtype=np.float32,to_write=True)
     #aa = Variable('aa',dtype=np.float32,to_write=True)
-    tpp = Variable('tpp',dtype=np.float32,to_write=False) # mu_aa
+    #tpp = Variable('tpp',dtype=np.float32,to_write=True) # mu_aa
+    d_tpp = Variable('d_tpp',dtype=np.float32,to_write=False) # mu_aa
+    nd_tpp = Variable('nd_tpp',dtype=np.float32,to_write=False)
+    euph_z = Variable('euph_z',dtype=np.float32,to_write=False)
     d_phy = Variable('d_phy',dtype=np.float32,to_write=False)
     nd_phy = Variable('nd_phy',dtype=np.float32,to_write=False)    
     kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
@@ -184,7 +187,10 @@ def Profiles(particle, fieldset, time):
     particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
     particle.d_phy= fieldset.d_phy[time, particle.depth,particle.lat,particle.lon]  
     particle.nd_phy= fieldset.nd_phy[time, particle.depth,particle.lat,particle.lon] 
-    particle.tpp = fieldset.tpp[time, particle.depth,particle.lat,particle.lon] 
+    #particle.tpp = fieldset.tpp[time, particle.depth,particle.lat,particle.lon] 
+    particle.d_tpp = fieldset.d_tpp[time,particle.depth,particle.lat,particle.lon]
+    particle.nd_tpp = fieldset.nd_tpp[time,particle.depth,particle.lat,particle.lon]
+    particle.euph_z = fieldset.euph_z[time,particle.depth,particle.lat,particle.lon]
     particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
     particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
     particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
@@ -218,8 +224,16 @@ def Kooi(particle,fieldset,time):
         aa = 0.
     else:
         aa = n2   # [no m-3] to compare to Kooi model    
-
-    mu_n0 = particle.tpp/aa    
+        
+    if particle.depth<particle.euph_z:
+        tpp0 = particle.nd_tpp + particle.d_tpp
+    else:
+        tpp0 = 0.
+    
+    #print(tpp0)
+    
+    mu_n0 = tpp0/aa    #particle.tpp/aa 
+    #mu_n0 = particle.tpp/aa    
     mu_n = mu_n0*14.007               # conversion from mmol N m-3 d-1 to mg N m-3 d-1 (atomic weight of 1 mol of N = 14.007 g) 
     mu_n2 = mu_n/med_N2cell           # conversion from mg N m-3 d-1 to d-1
 
@@ -324,7 +338,9 @@ filenames = {'U': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': 
              'W': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': [wfiles]},
              'd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': pfiles},
              'nd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': pfiles},             
-             #'tpp': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': ppfiles}, # AAmu
+             'euph_z': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles},
+             'd_tpp': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles}, # 'depth': wfiles,
+             'nd_tpp': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles},
              'cons_temperature': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': tsfiles},
              'abs_salinity': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles, 'data': tsfiles}}
 
@@ -334,7 +350,9 @@ variables = {'U': 'uo',
              'W': 'wo',
              'd_phy': 'PHD',
              'nd_phy': 'PHN',
-             #'tpp': 'TPP3', # AAmu
+             'euph_z': 'MED_XZE',
+             'd_tpp': 'PRD', #TPP3', # AAmu
+             'nd_tpp': 'PRN',
              'cons_temperature': 'potemp',
              'abs_salinity': 'salin'}
 
@@ -343,7 +361,9 @@ dimensions = {'U': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': '
               'W': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': 'time_centered'},
               'd_phy': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_centered'},
               'nd_phy': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_centered'},
-              #'tpp': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_centered'}, # AAmu
+              'euph_z': {'lon': 'glamf', 'lat': 'gphif','time': 'time_counter'},
+              'd_tpp': {'lon': 'glamf', 'lat': 'gphif','time': 'time_counter'}, # 'depth': 'depthw',
+              'nd_tpp': {'lon': 'glamf', 'lat': 'gphif','time': 'time_counter'},
               'cons_temperature': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_centered'},
               'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_centered'}}
 
@@ -374,7 +394,7 @@ with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
 
 kv_or = np.transpose(np.tile(np.array(upsilon_z),(len(lats),len(lons),1,1)), (2,3,0,1)) # kinematic viscosity
 sv_or = np.transpose(np.tile(np.array(mu_z),(len(lats),len(lons),1,1)), (2,3,0,1)) # dynamic viscosity of seawater    
-
+#print(kv_or.shape)
 KV = Field('KV',kv_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='U'
 SV = Field('SV',sv_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='V'
         
@@ -383,30 +403,31 @@ fieldset.add_field(SV)
 
 # ------------- Testing using average diatom or non-diatom PP instead of TPP3 -----------
 
-pp_orig = xr.open_dataset(ppfiles)
-euph_z,nd_phy_ml,d_phy_ml = pp_orig.variables['MED_XZE'], pp_orig.variables['PRN'], pp_orig.variables['PRD']
+# pp_orig = xr.open_dataset(ppfiles)
+# euph_z,nd_phy_ml,d_phy_ml = pp_orig.variables['MED_XZE'], pp_orig.variables['PRN'], pp_orig.variables['PRD']
 
-z_all = Depth.data # depth levels of NEMO 
-euph_z1 = euph_z[:,iy_min+1,ix_min+1].data #50 # selecting euph layer depth where particle released
-tot_phy_ml = nd_phy_ml[:,iy_min+1,ix_min+1].data + d_phy_ml[:,iy_min+1,ix_min+1].data 
-id_ = z_all < euph_z1
+# z_all = Depth.data # depth levels of NEMO 
+# euph_z1 = euph_z[:,iy_min+1,ix_min+1].data #50 # selecting euph layer depth where particle released
+# tot_phy_ml = nd_phy_ml[:,iy_min+1,ix_min+1].data + d_phy_ml[:,iy_min+1,ix_min+1].data 
+# id_ = z_all < euph_z1
 
-nemo_euph = z_all[id_]
+# nemo_euph = z_all[id_]
 
-dz = np.zeros(len(z_all))
-for z in range(len(nemo_euph)+1):
-    dz[z] = (z_all[z+1]-z_all[z])
+# dz = np.zeros(len(z_all))
+# for z in range(len(nemo_euph)+1):
+#     dz[z] = (z_all[z+1]-z_all[z])
 
-e1 = np.tile(np.array(euph_z1),(1,len(z_all),3,3))
-p1 = np.tile(np.array(tot_phy_ml),(1,len(z_all),3,3))
-i1 = np.transpose(np.tile(id_,(3,3,1,1)),(2,3,0,1))
-dz1 = np.transpose(np.tile(dz,(3,3,1,1)),(2,3,0,1))
-tpp_or= (p1*i1)/dz1
+# e1 = np.tile(np.array(euph_z1),(1,len(z_all),3,3))
+# p1 = np.tile(np.array(tot_phy_ml),(1,len(z_all),3,3))
+# i1 = np.transpose(np.tile(id_,(3,3,1,1)),(2,3,0,1))
+# dz1 = np.transpose(np.tile(dz,(3,3,1,1)),(2,3,0,1))
+# tpp_or= (p1*i1)/dz1
 
 
-tpp = Field('tpp',tpp_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='U'
+# #print(tpp_or.shape) #,tpp_or)
+# tpp = Field('tpp',tpp_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='U'
         
-fieldset.add_field(tpp)
+# fieldset.add_field(tpp)
 
 
 """ Defining the particle set """
@@ -423,7 +444,7 @@ pset = ParticleSet.from_list(fieldset=fieldset,       # the fields on which the 
 kernels = pset.Kernel(AdvectionRK4_3D_vert) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #+ pset.Kernel(Sink) # pset.Kernel(AdvectionRK4_3D_vert) 
 
 dirwrite = '/home/dlobelle/Kooi_data/data_output/tests/'
-outfile = dirwrite + 'Kooi+NEMO_1DwithWadv_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
+outfile = dirwrite + 'Kooi+NEMO_1DwithWadv_testTPPkernal_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt)) #120
 
