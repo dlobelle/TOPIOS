@@ -22,19 +22,19 @@ import scipy.linalg
 import math as math
 warnings.filterwarnings("ignore")
 
-# Fieldset grid is 30x30 deg in North Pacific
+#------ Fieldset grid is 30x30 deg in North Pacific ------
 minlat = 20 
 maxlat = 50 
 minlon = -175 
 maxlon = -145 
 
-# Release particles on a 10x10 deg grid in middle of the 30x30 fieldset grid and 1m depth
+#------ Release particles on a 10x10 deg grid in middle of the 30x30 fieldset grid and 1m depth ------
 lat_release0 = np.tile(np.linspace(30,39,10),[10,1]) 
 lat_release = lat_release0.T 
 lon_release = np.tile(np.linspace(-165,-156,10),[10,1]) 
 z_release = np.tile(1,[10,10])
 
-# Choose:
+#------ Choose ------:
 simdays = 5
 time0 = 0
 simhours = 1
@@ -42,13 +42,16 @@ simmins = 30
 secsdt = 30
 hrsoutdt = 5
 
-#--------- Choose below: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL BELOW -----
+#--------- CHOOSE density and size of particles: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL BELOW -----
 rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1 in Kooi: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
 r_pl = "1e-04"                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
 
-
+"""functions and kernals"""
 def Kooi(particle,fieldset,time):  
-    #------ CHOOSE -----
+    """
+    Kernal to compute the vertical velocity (Vs) of particles due to changes in algal concentrations, growth and death of attached algae based on Kooi et al. 2017 model 
+    """
+    #------ CHOOSE density and size of particles -----
     rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
     r_pl = 1e-04                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
     
@@ -110,18 +113,20 @@ def Kooi(particle,fieldset,time):
     v_tot = v_bf + v_pl                               # volume of total [m3]
     t_bf = ((v_tot*(3./(4.*math.pi)))**(1./3.))-r_pl  # biofilm thickness [m] 
     
-    
+    #------ Diffusivity -----
     r_tot = r_pl + t_bf                               # total radius [m]
     rho_tot = (r_pl**3. * rho_pl + ((r_pl + t_bf)**3. - r_pl**3.)*rho_bf)/(r_pl + t_bf)**3. # total density [kg m-3]
-    rho_tot = rho_tot
     theta_tot = 4.*math.pi*r_tot**2.                          # surface area of total [m2]
     d_pl = k * (t + 273.16)/(6. * math.pi * sw_visc * r_tot)  # diffusivity of plastic particle [m2 s-1]
     d_a = k * (t + 273.16)/(6. * math.pi * sw_visc * r_a)     # diffusivity of algal cells [m2 s-1] 
+    
+    #------ Encounter rates -----
     beta_abrown = 4.*math.pi*(d_pl + d_a)*(r_tot + r_a)       # Brownian motion [m3 s-1] 
     beta_ashear = 1.3*gamma*((r_tot + r_a)**3.)               # advective shear [m3 s-1]
     beta_aset = (1./2.)*math.pi*r_tot**2. * abs(vs)           # differential settling [m3 s-1]
     beta_a = beta_abrown + beta_ashear + beta_aset            # collision rate [m3 s-1]
     
+    #------ Attached algal growth (Eq. 11 in Kooi et al. 2017) -----
     a_coll = (beta_a*aa)/theta_pl
     a_growth = mu_aa*a
     a_mort = m_a*a
@@ -140,6 +145,7 @@ def Kooi(particle,fieldset,time):
     else:
         w = 10.**(-3.76715 + (1.92944*math.log10(d)) - (0.09815*math.log10(d)**2.) - (0.00575*math.log10(d)**3.) + (0.00056*math.log10(d)**4.))
     
+    #------ Settling of particle -----
     if z >= 4000.: 
         vs = 0
     elif z < 1. and delta_rho < 0:
@@ -152,31 +158,9 @@ def Kooi(particle,fieldset,time):
 
     particle.depth += vs * particle.dt 
     particle.vs = vs
-    z = particle.depth
-    dt = particle.dt
-
-""" Defining the particle class """
-
-class plastic_particle(JITParticle): #ScipyParticle): #
-    u = Variable('u', dtype=np.float32,to_write=False)
-    v = Variable('v', dtype=np.float32,to_write=False)
-    w = Variable('w', dtype=np.float32,to_write=False)
-    temp = Variable('temp',dtype=np.float32,to_write=False)
-    density = Variable('density',dtype=np.float32,to_write=True)
-    #aa = Variable('aa',dtype=np.float32,to_write=True)
-    #d_tpp = Variable('d_tpp',dtype=np.float32,to_write=False) # mu_aa
-    #nd_tpp = Variable('nd_tpp',dtype=np.float32,to_write=False)
-    tpp3 = Variable('tpp3',dtype=np.float32,to_write=False)
-    euph_z = Variable('euph_z',dtype=np.float32,to_write=False)
-    d_phy = Variable('d_phy',dtype=np.float32,to_write=False)
-    nd_phy = Variable('nd_phy',dtype=np.float32,to_write=False)    
-    kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
-    sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
-    a = Variable('a',dtype=np.float32,to_write=False)
-    vs = Variable('vs',dtype=np.float32,to_write=True)    
+    #z = particle.depth # CHECK if removing this is ok
+    #dt = particle.dt # CHECK if removing this is ok
     
-"""functions and kernals"""
-
 def DeleteParticle(particle, fieldset, time):
     """Kernel for deleting particles if they are out of bounds."""
     print('particle is deleted') #print(particle.lon, particle.lat, particle.depth)
@@ -199,7 +183,27 @@ def Profiles(particle, fieldset, time):
     particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
     particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
     particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
+    
+""" Defining the particle class """
 
+class plastic_particle(JITParticle): #ScipyParticle): #
+    u = Variable('u', dtype=np.float32,to_write=False)
+    v = Variable('v', dtype=np.float32,to_write=False)
+    w = Variable('w', dtype=np.float32,to_write=False)
+    temp = Variable('temp',dtype=np.float32,to_write=False)
+    density = Variable('density',dtype=np.float32,to_write=True)
+    #aa = Variable('aa',dtype=np.float32,to_write=True)
+    #d_tpp = Variable('d_tpp',dtype=np.float32,to_write=False) # mu_aa
+    #nd_tpp = Variable('nd_tpp',dtype=np.float32,to_write=False)
+    tpp3 = Variable('tpp3',dtype=np.float32,to_write=False)
+    euph_z = Variable('euph_z',dtype=np.float32,to_write=False)
+    d_phy = Variable('d_phy',dtype=np.float32,to_write=False)
+    nd_phy = Variable('nd_phy',dtype=np.float32,to_write=False)    
+    kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
+    sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
+    a = Variable('a',dtype=np.float32,to_write=False)
+    vs = Variable('vs',dtype=np.float32,to_write=True)    
+    
 """ Defining the fieldset""" 
 
 dirread = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/means/'
@@ -265,7 +269,7 @@ fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extra
 
 depths = fieldset.U.depth
 
-# Kinematic viscosity and dynamic viscosity not available in MEDUSA so replicating Kooi's profiles at all grid points
+# ------ Kinematic viscosity and dynamic viscosity not available in MEDUSA so replicating Kooi's profiles at all grid points ------
 with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
     depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
 
@@ -290,7 +294,7 @@ pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which th
 
 """ Kernal + Execution"""
 
-kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) # pset.Kernel(AdvectionRK4_3D_vert) +pset.Kernel(polyTEOS10_bsq) +
+kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) 
 
 outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/Kooi+NEMO_3D_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
 
