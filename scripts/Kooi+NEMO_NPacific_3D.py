@@ -1,6 +1,7 @@
-# 29/01/20- Based on Kooi_North Pacific_1D.py but using NEMO-MEDUSA profiles (now grid size is no longer 2x2 since 1/12 so can use min lons and lats and then index + 1 for 2x2 grid)
+# 29/01/20- Based on Kooi+NEMO_North Pacific_1D.py but using NEMO-MEDUSA profiles (now grid size is no longer 2x2 since 1/12 deg resolution so can use min lons and lats and then index + 1 for 2x2 grid, or 10x10 grid)
 
-from parcels import FieldSet, ParticleSet, JITParticle, ScipyParticle, AdvectionRK4_3D, AdvectionRK4, ErrorCode, ParticleFile, Variable, Field, NestedField, VectorField, timer #polyTEOS10_bsq #seawaterdensity
+from parcels import FieldSet, ParticleSet, JITParticle, ScipyParticle, AdvectionRK4_3D, AdvectionRK4, ErrorCode, ParticleFile, Variable, Field, NestedField, VectorField, timer 
+#from parcels.kernels import seawaterdensity
 from datetime import timedelta as delta
 from datetime import  datetime
 import numpy as np
@@ -21,71 +22,61 @@ import scipy.linalg
 import math as math
 warnings.filterwarnings("ignore")
 
-minlat = 20 #22 #36
-maxlat = 50 #48
-minlon = -175 #172 #-160
-maxlon = -145 #136
+# Fieldset grid is 30x30 deg in North Pacific
+minlat = 20 
+maxlat = 50 
+minlon = -175 
+maxlon = -145 
 
-lat_release0 = np.tile(np.linspace(30,39,10),[10,1]) #np.linspace(minlat+1,maxlat,10)# 
-lat_release = lat_release0.T #35 #
-lon_release = np.tile(np.linspace(-165,-156,10),[10,1]) #np.linspace(minlon+1,maxlon,10) # -160 #
-z_release = np.tile(10,[10,10]) #[1]*10 # 1. #
+# Release particles on a 10x10 deg grid in middle of the 30x30 fieldset grid and 1m depth
+lat_release0 = np.tile(np.linspace(30,39,10),[10,1]) 
+lat_release = lat_release0.T 
+lon_release = np.tile(np.linspace(-165,-156,10),[10,1]) 
+z_release = np.tile(1,[10,10])
 
-simdays = 100
+# Choose:
+simdays = 5
 time0 = 0
 simhours = 1
 simmins = 30
-secsdt = 10
+secsdt = 30
 hrsoutdt = 5
 
-
-#------ Choose below: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL -----
-rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-r_pl = "1e-03"                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
+#--------- Choose below: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL BELOW -----
+rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1 in Kooi: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
+r_pl = "1e-04"                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
 
 
 def Kooi(particle,fieldset,time):  
     #------ CHOOSE -----
     rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-    r_pl = 1e-03                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
+    r_pl = 1e-04                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
     
-    
-    # 30/01/20- for aa and mu_aa, using ratios to get ambient algal concentrations and algal growth (N:C:AA using Redfield ratio... C:N = 6.625, so N*6.625)
-     
-    min_N2cell = 2656.0e-09 #[mgN cell-1] 35339e-09 [mgC cell-1]
-    max_N2cell = 11.0e-09   #[mgN cell-1] 47.67e-09 [mgC cell-1]
-    med_N2cell = 356.04e-09
-    
-#   n0 = particle.nd_phy # mmol N m-3 
-#   n = n0*14.007 # conversion from mmol N m-3 to mg N m-3 (atomic weight of 1 mol of N = 14.007 g, so same from mmol to mg)    
-    #c = n*6.625 # conversion from mg N m-3 to mg C m-3 (Redfield ratio)
-    #c2 = c/(47.76*1e-09)
-
-    #if c2<0:# conversion from mg C m-3 to no. m-3
-    #    aa = 0
-    #else:
-    #    aa = c2   # should be [no m-3] to compare to Kooi model    
-    #particle.aa = aa
-    
-    # 
-    n0 = particle.nd_phy+particle.d_phy # mmol N m-3 
-    n = n0*14.007       # conversion from mmol N m-3 to mg N m-3 (atomic weight of 1 mol of N = 14.007 g)   
-    n2 = n/med_N2cell   # conversion from mg N m-3 to no. m-3
+    # Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
+    min_N2cell = 2656.0e-09 #[mgN cell-1] (from Menden-Deuer and Lessard 2000)
+    max_N2cell = 11.0e-09   #[mgN cell-1] 
+    med_N2cell = 356.04e-09 #[mgN cell-1] THIS is used below 
+      
+    # Ambient algal concentration from MEDUSA's non-diatom + diatom phytoplankton 
+    n0 = particle.nd_phy+particle.d_phy # [mmol N m-3] in MEDUSA
+    n = n0*14.007       # conversion from [mmol N m-3] to [mg N m-3] (atomic weight of 1 mol of N = 14.007 g)   
+    n2 = n/med_N2cell   # conversion from [mg N m-3] to [no. m-3]
     
     if n2<0.: 
         aa = 0.
     else:
         aa = n2   # [no m-3] to compare to Kooi model    
     
+    # Primary productivity (algal growth) only above euphotic zone, condition same as in Kooi et al. 2017
     if particle.depth<particle.euph_z:
         tpp0 = particle.tpp3 # (particle.nd_tpp + particle.d_tpp)/particle.euph_z # Seeing if the 2D production of nondiatom + diatom can be converted to a vertical profile (better with TPP3)
     else:
-        tpp0 = 0.
+        tpp0 = 0.    
     
-    mu_n0 = tpp0/aa    #particle.tpp/aa 
-    mu_n = mu_n0*14.007               # conversion from mmol N m-3 d-1 to mg N m-3 d-1 (atomic weight of 1 mol of N = 14.007 g) 
-    mu_n2 = mu_n/med_N2cell           # conversion from mg N m-3 d-1 to d-1
-
+    mu_n0 = tpp0*14.007               # conversion from mmol N m-3 d-1 to mg N m-3 d-1 (atomic weight of 1 mol of N = 14.007 g) 
+    mu_n = mu_n0/med_N2cell           # conversion from mg N m-3 d-1 to no. m-3 d-1
+    mu_n2 = mu_n/aa                   # conversion from no. m-3 d-1 to d-1
+    
     if mu_n2<0.:
         mu_aa = 0.
     else:
@@ -377,6 +368,7 @@ fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extra
 
 depths = fieldset.U.depth
 
+# Kinematic viscosity and dynamic viscosity not available in MEDUSA so replicating Kooi's profiles at all grid points
 with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
     depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
 
@@ -401,9 +393,9 @@ pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which th
 
 """ Kernal + Execution"""
 
-kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) # pset.Kernel(AdvectionRK4_3D_vert) 
+kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) # pset.Kernel(AdvectionRK4_3D_vert) +pset.Kernel(polyTEOS10_bsq) +
 
-outfile = '/home/dlobelle/Kooi_data/data_output/rho_'+str(int(rho_pl))+'kgm-3/Kooi+NEMO_3D_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
+outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/Kooi+NEMO_3D_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
