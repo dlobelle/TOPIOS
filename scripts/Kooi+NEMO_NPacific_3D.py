@@ -1,7 +1,7 @@
 # 29/01/20- Based on Kooi+NEMO_North Pacific_1D.py but using NEMO-MEDUSA profiles (now grid size is no longer 2x2 since 1/12 deg resolution so can use min lons and lats and then index + 1 for 2x2 grid, or 10x10 grid)
 
 from parcels import FieldSet, ParticleSet, JITParticle, ScipyParticle, AdvectionRK4_3D, AdvectionRK4, ErrorCode, ParticleFile, Variable, Field, NestedField, VectorField, timer 
-#from parcels.kernels import seawaterdensity
+from parcels.kernels import seawaterdensity
 from datetime import timedelta as delta
 from datetime import  datetime
 import numpy as np
@@ -259,7 +259,6 @@ latvals = Lat[:]; lonvals = Lon[:] # extract lat/lon values to numpy arrays
 iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat, minlon)
 iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat, maxlon)
 indices = {'lon': range(ix_min, ix_max), 'lat': range(iy_min, iy_max)}
-mask.close()
 
 fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, indices=indices) #allow_time_extrapolation=True or False
 
@@ -276,8 +275,8 @@ kv_or = np.transpose(np.tile(np.array(upsilon_z),(len(v_lon),len(v_lat),1)), (2,
 sv_or = np.transpose(np.tile(np.array(mu_z),(len(v_lon),len(v_lat),1)), (2,0,1))        # dynamic viscosity of seawater    
 KV = Field('KV',kv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
 SV = Field('SV',sv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
-fieldset.add_field(KV, 'KV')
-fieldset.add_field(SV, 'SV')
+fieldset.add_field(KV)
+fieldset.add_field(SV)
 
 """ Defining the particle set """
 
