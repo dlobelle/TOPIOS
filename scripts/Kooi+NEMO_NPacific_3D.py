@@ -1,7 +1,7 @@
 # 29/01/20- Based on Kooi+NEMO_North Pacific_1D.py but using NEMO-MEDUSA profiles (now grid size is no longer 2x2 since 1/12 deg resolution so can use min lons and lats and then index + 1 for 2x2 grid, or 10x10 grid)
 
 from parcels import FieldSet, ParticleSet, JITParticle, ScipyParticle, AdvectionRK4_3D, AdvectionRK4, ErrorCode, ParticleFile, Variable, Field, NestedField, VectorField, timer 
-#from parcels.kernels import seawaterdensity
+from parcels.kernels import seawaterdensity
 from datetime import timedelta as delta
 from datetime import  datetime
 import numpy as np
@@ -22,19 +22,19 @@ import scipy.linalg
 import math as math
 warnings.filterwarnings("ignore")
 
-# Fieldset grid is 30x30 deg in North Pacific
+#------ Fieldset grid is 30x30 deg in North Pacific ------
 minlat = 20 
 maxlat = 50 
 minlon = -175 
 maxlon = -145 
 
-# Release particles on a 10x10 deg grid in middle of the 30x30 fieldset grid and 1m depth
+#------ Release particles on a 10x10 deg grid in middle of the 30x30 fieldset grid and 1m depth ------
 lat_release0 = np.tile(np.linspace(30,39,10),[10,1]) 
 lat_release = lat_release0.T 
 lon_release = np.tile(np.linspace(-165,-156,10),[10,1]) 
 z_release = np.tile(1,[10,10])
 
-# Choose:
+#------ Choose ------:
 simdays = 5
 time0 = 0
 simhours = 1
@@ -42,34 +42,37 @@ simmins = 30
 secsdt = 30
 hrsoutdt = 5
 
-#--------- Choose below: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL BELOW -----
+#--------- CHOOSE density and size of particles: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL BELOW -----
 rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1 in Kooi: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
 r_pl = "1e-04"                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
 
-
+"""functions and kernals"""
 def Kooi(particle,fieldset,time):  
-    #------ CHOOSE -----
+    """
+    Kernal to compute the vertical velocity (Vs) of particles due to changes in algal concentrations, growth and death of attached algae based on Kooi et al. 2017 model 
+    """
+    #------ CHOOSE density and size of particles -----
     rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
     r_pl = 1e-04                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
     
-    # Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
+    #------ Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
     min_N2cell = 2656.0e-09 #[mgN cell-1] (from Menden-Deuer and Lessard 2000)
     max_N2cell = 11.0e-09   #[mgN cell-1] 
-    med_N2cell = 356.04e-09 #[mgN cell-1] THIS is used below 
+    med_N2cell = 356.04e-09 #[mgN cell-1] median value is used below (as done in Kooi et al. 2017)
       
-    # Ambient algal concentration from MEDUSA's non-diatom + diatom phytoplankton 
+    #------ Ambient algal concentration from MEDUSA's non-diatom + diatom phytoplankton 
     n0 = particle.nd_phy+particle.d_phy # [mmol N m-3] in MEDUSA
-    n = n0*14.007       # conversion from [mmol N m-3] to [mg N m-3] (atomic weight of 1 mol of N = 14.007 g)   
-    n2 = n/med_N2cell   # conversion from [mg N m-3] to [no. m-3]
+    n = n0*14.007                       # conversion from [mmol N m-3] to [mg N m-3] (atomic weight of 1 mol of N = 14.007 g)   
+    n2 = n/med_N2cell                   # conversion from [mg N m-3] to [no. m-3]
     
     if n2<0.: 
         aa = 0.
     else:
         aa = n2   # [no m-3] to compare to Kooi model    
     
-    # Primary productivity (algal growth) only above euphotic zone, condition same as in Kooi et al. 2017
+    #------ Primary productivity (algal growth) only above euphotic zone, condition same as in Kooi et al. 2017
     if particle.depth<particle.euph_z:
-        tpp0 = particle.tpp3 # (particle.nd_tpp + particle.d_tpp)/particle.euph_z # Seeing if the 2D production of nondiatom + diatom can be converted to a vertical profile (better with TPP3)
+        tpp0 = particle.tpp3 # (particle.nd_tpp + particle.d_tpp)/particle.euph_z # 2D nondiatom + diatom PP couldn't be converted to a vertical profile (better with TPP3)
     else:
         tpp0 = 0.    
     
@@ -80,15 +83,16 @@ def Kooi(particle,fieldset,time):
     if mu_n2<0.:
         mu_aa = 0.
     else:
-        mu_aa = mu_n2/86400. # conversion from d-1 to s-1
-        
+        mu_aa = mu_n2/86400.          # conversion from d-1 to s-1
+    
+    #------ Profiles from MEDUSA or Kooi theoretical profiles -----
     z = particle.depth           # [m]
     t = particle.temp            # [oC]
     sw_visc = particle.sw_visc   # [kg m-1 s-1]
     kin_visc = particle.kin_visc # [m2 s-1]
     rho_sw = particle.density    # [kg m-3]   #rho_sw     
     a = particle.a               # [no. m-2 s-1]
-    vs = particle.vs             # [m s-1]   #particle.depth
+    vs = particle.vs             # [m s-1]   
 
     #------ Constants and algal properties -----
     g = 7.32e10/(86400.**2.)    # gravitational acceleration (m d-2), now [s-2]
@@ -109,18 +113,20 @@ def Kooi(particle,fieldset,time):
     v_tot = v_bf + v_pl                               # volume of total [m3]
     t_bf = ((v_tot*(3./(4.*math.pi)))**(1./3.))-r_pl  # biofilm thickness [m] 
     
-    
+    #------ Diffusivity -----
     r_tot = r_pl + t_bf                               # total radius [m]
     rho_tot = (r_pl**3. * rho_pl + ((r_pl + t_bf)**3. - r_pl**3.)*rho_bf)/(r_pl + t_bf)**3. # total density [kg m-3]
-    rho_tot = rho_tot
     theta_tot = 4.*math.pi*r_tot**2.                          # surface area of total [m2]
     d_pl = k * (t + 273.16)/(6. * math.pi * sw_visc * r_tot)  # diffusivity of plastic particle [m2 s-1]
     d_a = k * (t + 273.16)/(6. * math.pi * sw_visc * r_a)     # diffusivity of algal cells [m2 s-1] 
+    
+    #------ Encounter rates -----
     beta_abrown = 4.*math.pi*(d_pl + d_a)*(r_tot + r_a)       # Brownian motion [m3 s-1] 
     beta_ashear = 1.3*gamma*((r_tot + r_a)**3.)               # advective shear [m3 s-1]
     beta_aset = (1./2.)*math.pi*r_tot**2. * abs(vs)           # differential settling [m3 s-1]
     beta_a = beta_abrown + beta_ashear + beta_aset            # collision rate [m3 s-1]
     
+    #------ Attached algal growth (Eq. 11 in Kooi et al. 2017) -----
     a_coll = (beta_a*aa)/theta_pl
     a_growth = mu_aa*a
     a_mort = m_a*a
@@ -139,6 +145,7 @@ def Kooi(particle,fieldset,time):
     else:
         w = 10.**(-3.76715 + (1.92944*math.log10(d)) - (0.09815*math.log10(d)**2.) - (0.00575*math.log10(d)**3.) + (0.00056*math.log10(d)**4.))
     
+    #------ Settling of particle -----
     if z >= 4000.: 
         vs = 0
     elif z < 1. and delta_rho < 0:
@@ -151,9 +158,32 @@ def Kooi(particle,fieldset,time):
 
     particle.depth += vs * particle.dt 
     particle.vs = vs
-    z = particle.depth
-    dt = particle.dt
+    #z = particle.depth # CHECK if removing this is ok
+    #dt = particle.dt # CHECK if removing this is ok
+    
+def DeleteParticle(particle, fieldset, time):
+    """Kernel for deleting particles if they are out of bounds."""
+    print('particle is deleted') #print(particle.lon, particle.lat, particle.depth)
+    particle.delete()
 
+def getclosest_ij(lats,lons,latpt,lonpt):     
+    """Function to find the index of the closest point to a certain lon/lat value."""
+    dist_sq = (lats-latpt)**2 + (lons-lonpt)**2                 # find squared distance of every point on grid
+    minindex_flattened = dist_sq.argmin()                       # 1D index of minimum dist_sq element
+    return np.unravel_index(minindex_flattened, lats.shape)     # Get 2D index for latvals and lonvals arrays from 1D index
+    
+def Profiles(particle, fieldset, time):  
+    particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
+    particle.d_phy= fieldset.d_phy[time, particle.depth,particle.lat,particle.lon]  
+    particle.nd_phy= fieldset.nd_phy[time, particle.depth,particle.lat,particle.lon] 
+    #particle.d_tpp = fieldset.d_tpp[time,particle.depth,particle.lat,particle.lon]
+    #particle.nd_tpp = fieldset.nd_tpp[time,particle.depth,particle.lat,particle.lon]
+    particle.tpp3 = fieldset.tpp3[time,particle.depth,particle.lat,particle.lon]
+    particle.euph_z = fieldset.euph_z[time,particle.depth,particle.lat,particle.lon]
+    particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
+    particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
+    particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
+    
 """ Defining the particle class """
 
 class plastic_particle(JITParticle): #ScipyParticle): #
@@ -174,136 +204,6 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     a = Variable('a',dtype=np.float32,to_write=False)
     vs = Variable('vs',dtype=np.float32,to_write=True)    
     
-"""functions and kernals"""
-
-def DeleteParticle(particle, fieldset, time):
-    """Kernel for deleting particles if they are out of bounds."""
-    print('particle is deleted') #print(particle.lon, particle.lat, particle.depth)
-    particle.delete()
-
-def getclosest_ij(lats,lons,latpt,lonpt):     
-    """Function to find the index of the closest point to a certain lon/lat value."""
-    dist_sq = (lats-latpt)**2 + (lons-lonpt)**2                 # find squared distance of every point on grid
-    minindex_flattened = dist_sq.argmin()                       # 1D index of minimum dist_sq element
-    return np.unravel_index(minindex_flattened, lats.shape)     # Get 2D index for latvals and lonvals arrays from 1D index
-
-def AdvectionRK4_3D_vert(particle, fieldset, time): # adapting AdvectionRK4_3D kernal to only vertical velocity 
-    """Advection of particles using fourth-order Runge-Kutta integration including vertical velocity.
-    Function needs to be converted to Kernel object before execution"""
-    (w1) = fieldset.W[time, particle.depth, particle.lat, particle.lon]
-    #lon1 = particle.lon + u1*.5*particle.dt
-    #lat1 = particle.lat + v1*.5*particle.dt
-    dep1 = particle.depth + w1*.5*particle.dt
-    (w2) = fieldset.W[time + .5 * particle.dt, dep1, particle.lat, particle.lon]
-    #lon2 = particle.lon + u2*.5*particle.dt
-    #lat2 = particle.lat + v2*.5*particle.dt
-    dep2 = particle.depth + w2*.5*particle.dt
-    (w3) = fieldset.W[time + .5 * particle.dt, dep2, particle.lat, particle.lon]
-    #lon3 = particle.lon + u3*particle.dt
-    #lat3 = particle.lat + v3*particle.dt
-    dep3 = particle.depth + w3*particle.dt
-    (w4) = fieldset.W[time + particle.dt, dep3, particle.lat, particle.lon]
-    #particle.lon += particle.lon #(u1 + 2*u2 + 2*u3 + u4) / 6. * particle.dt
-    #particle.lat += particle.lat #lats[1,1] #(v1 + 2*v2 + 2*v3 + v4) / 6. * particle.dt
-    particle.depth += (w1 + 2*w2 + 2*w3 + w4) / 6. * particle.dt
-
-def polyTEOS10_bsq(particle, fieldset, time):
-    # calculates density based on the polyTEOS10-bsq algorithm from Appendix A.2 of
-    # https://www.sciencedirect.com/science/article/pii/S1463500315000566
-    # requires fieldset.abs_salinity and fieldset.cons_temperature Fields in the fieldset
-    # and a particle.density Variable in the ParticleSet
-    #
-    # References:
-    #  Roquet, F., Madec, G., McDougall, T. J., Barker, P. M., 2014: Accurate
-    #   polynomial expressions for the density and specific volume of
-    #   seawater using the TEOS-10 standard. Ocean Modelling.
-    #  McDougall, T. J., D. R. Jackett, D. G. Wright and R. Feistel, 2003:
-    #   Accurate and computationally efficient algorithms for potential
-    #   temperature and density of seawater.  Journal of Atmospheric and
-    #   Oceanic Technology, 20, 730-741.
-
-    Z = - particle.depth  # note: use negative depths!
-    SA = fieldset.abs_salinity[time, particle.depth, particle.lat, particle.lon]
-    CT = fieldset.cons_temperature[time, particle.depth, particle.lat, particle.lon]
-
-    SAu = 40 * 35.16504 / 35
-    CTu = 40
-    Zu = 1e4
-    deltaS = 32
-    R000 = 8.0189615746e+02
-    R100 = 8.6672408165e+02
-    R200 = -1.7864682637e+03
-    R300 = 2.0375295546e+03
-    R400 = -1.2849161071e+03
-    R500 = 4.3227585684e+02
-    R600 = -6.0579916612e+01
-    R010 = 2.6010145068e+01
-    R110 = -6.5281885265e+01
-    R210 = 8.1770425108e+01
-    R310 = -5.6888046321e+01
-    R410 = 1.7681814114e+01
-    R510 = -1.9193502195e+00
-    R020 = -3.7074170417e+01
-    R120 = 6.1548258127e+01
-    R220 = -6.0362551501e+01
-    R320 = 2.9130021253e+01
-    R420 = -5.4723692739e+00
-    R030 = 2.1661789529e+01
-    R130 = -3.3449108469e+01
-    R230 = 1.9717078466e+01
-    R330 = -3.1742946532e+00
-    R040 = -8.3627885467e+00
-    R140 = 1.1311538584e+01
-    R240 = -5.3563304045e+00
-    R050 = 5.4048723791e-01
-    R150 = 4.8169980163e-01
-    R060 = -1.9083568888e-01
-    R001 = 1.9681925209e+01
-    R101 = -4.2549998214e+01
-    R201 = 5.0774768218e+01
-    R301 = -3.0938076334e+01
-    R401 = 6.6051753097e+00
-    R011 = -1.3336301113e+01
-    R111 = -4.4870114575e+00
-    R211 = 5.0042598061e+00
-    R311 = -6.5399043664e-01
-    R021 = 6.7080479603e+00
-    R121 = 3.5063081279e+00
-    R221 = -1.8795372996e+00
-    R031 = -2.4649669534e+00
-    R131 = -5.5077101279e-01
-    R041 = 5.5927935970e-01
-    R002 = 2.0660924175e+00
-    R102 = -4.9527603989e+00
-    R202 = 2.5019633244e+00
-    R012 = 2.0564311499e+00
-    R112 = -2.1311365518e-01
-    R022 = -1.2419983026e+00
-    R003 = -2.3342758797e-02
-    R103 = -1.8507636718e-02
-    R013 = 3.7969820455e-01
-    ss = math.sqrt((SA + deltaS) / SAu)
-    tt = CT / CTu
-    zz = -Z / Zu
-    rz3 = R013 * tt + R103 * ss + R003
-    rz2 = (R022 * tt + R112 * ss + R012) * tt + (R202 * ss + R102) * ss + R002
-    rz1 = (((R041 * tt + R131 * ss + R031) * tt + (R221 * ss + R121) * ss + R021) * tt + ((R311 * ss + R211) * ss + R111) * ss + R011) * tt + (((R401 * ss + R301) * ss + R201) * ss + R101) * ss + R001
-    rz0 = (((((R060 * tt + R150 * ss + R050) * tt + (R240 * ss + R140) * ss + R040) * tt + ((R330 * ss + R230) * ss + R130) * ss + R030) * tt + (((R420 * ss + R320) * ss + R220) * ss + R120) * ss + R020) 
-           * tt + ((((R510 * ss + R410) * ss + R310) * ss + R210) * ss + R110) * ss + R010) * tt + (((((R600 * ss + R500) * ss + R400) * ss + R300) * ss + R200) * ss + R100) * ss + R000
-    particle.density = ((rz3 * zz + rz2) * zz + rz1) * zz + rz0
-    
-def Profiles(particle, fieldset, time):  
-    particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
-    particle.d_phy= fieldset.d_phy[time, particle.depth,particle.lat,particle.lon]  
-    particle.nd_phy= fieldset.nd_phy[time, particle.depth,particle.lat,particle.lon] 
-    #particle.d_tpp = fieldset.d_tpp[time,particle.depth,particle.lat,particle.lon]
-    #particle.nd_tpp = fieldset.nd_tpp[time,particle.depth,particle.lat,particle.lon]
-    particle.tpp3 = fieldset.tpp3[time,particle.depth,particle.lat,particle.lon]
-    particle.euph_z = fieldset.euph_z[time,particle.depth,particle.lat,particle.lon]
-    particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
-    particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
-    particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
-
 """ Defining the fieldset""" 
 
 dirread = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/means/'
@@ -370,7 +270,7 @@ fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extra
 
 depths = fieldset.U.depth
 
-# Kinematic viscosity and dynamic viscosity not available in MEDUSA so replicating Kooi's profiles at all grid points
+# ------ Kinematic viscosity and dynamic viscosity not available in MEDUSA so replicating Kooi's profiles at all grid points ------
 with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
     depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
 
@@ -395,13 +295,14 @@ pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which th
 
 """ Kernal + Execution"""
 
-kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) # pset.Kernel(AdvectionRK4_3D_vert) +pset.Kernel(polyTEOS10_bsq) +
+kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) 
 
 outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/Kooi+NEMO_3D_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
-pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}) 
+pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}) # recovery={ErrorCode.ErrorOutOfBounds: Delete, ErrorThroughSurface: PushBack}
+
 pfile.close()
 
 print('Execution finished')
