@@ -52,24 +52,24 @@ def Kooi(particle,fieldset,time):
     rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
     r_pl = 1e-04                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
     
-    # Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
+    #------ Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
     min_N2cell = 2656.0e-09 #[mgN cell-1] (from Menden-Deuer and Lessard 2000)
     max_N2cell = 11.0e-09   #[mgN cell-1] 
-    med_N2cell = 356.04e-09 #[mgN cell-1] THIS is used below 
+    med_N2cell = 356.04e-09 #[mgN cell-1] median value is used below (as done in Kooi et al. 2017)
       
-    # Ambient algal concentration from MEDUSA's non-diatom + diatom phytoplankton 
+    #------ Ambient algal concentration from MEDUSA's non-diatom + diatom phytoplankton 
     n0 = particle.nd_phy+particle.d_phy # [mmol N m-3] in MEDUSA
-    n = n0*14.007       # conversion from [mmol N m-3] to [mg N m-3] (atomic weight of 1 mol of N = 14.007 g)   
-    n2 = n/med_N2cell   # conversion from [mg N m-3] to [no. m-3]
+    n = n0*14.007                       # conversion from [mmol N m-3] to [mg N m-3] (atomic weight of 1 mol of N = 14.007 g)   
+    n2 = n/med_N2cell                   # conversion from [mg N m-3] to [no. m-3]
     
     if n2<0.: 
         aa = 0.
     else:
         aa = n2   # [no m-3] to compare to Kooi model    
     
-    # Primary productivity (algal growth) only above euphotic zone, condition same as in Kooi et al. 2017
+    #------ Primary productivity (algal growth) only above euphotic zone, condition same as in Kooi et al. 2017
     if particle.depth<particle.euph_z:
-        tpp0 = particle.tpp3 # (particle.nd_tpp + particle.d_tpp)/particle.euph_z # Seeing if the 2D production of nondiatom + diatom can be converted to a vertical profile (better with TPP3)
+        tpp0 = particle.tpp3 # (particle.nd_tpp + particle.d_tpp)/particle.euph_z # 2D nondiatom + diatom PP couldn't be converted to a vertical profile (better with TPP3)
     else:
         tpp0 = 0.    
     
@@ -80,15 +80,16 @@ def Kooi(particle,fieldset,time):
     if mu_n2<0.:
         mu_aa = 0.
     else:
-        mu_aa = mu_n2/86400. # conversion from d-1 to s-1
-        
+        mu_aa = mu_n2/86400.          # conversion from d-1 to s-1
+    
+    #------ Profiles from MEDUSA or Kooi theoretical profiles -----
     z = particle.depth           # [m]
     t = particle.temp            # [oC]
     sw_visc = particle.sw_visc   # [kg m-1 s-1]
     kin_visc = particle.kin_visc # [m2 s-1]
     rho_sw = particle.density    # [kg m-3]   #rho_sw     
     a = particle.a               # [no. m-2 s-1]
-    vs = particle.vs             # [m s-1]   #particle.depth
+    vs = particle.vs             # [m s-1]   
 
     #------ Constants and algal properties -----
     g = 7.32e10/(86400.**2.)    # gravitational acceleration (m d-2), now [s-2]
@@ -186,111 +187,6 @@ def getclosest_ij(lats,lons,latpt,lonpt):
     dist_sq = (lats-latpt)**2 + (lons-lonpt)**2                 # find squared distance of every point on grid
     minindex_flattened = dist_sq.argmin()                       # 1D index of minimum dist_sq element
     return np.unravel_index(minindex_flattened, lats.shape)     # Get 2D index for latvals and lonvals arrays from 1D index
-
-def AdvectionRK4_3D_vert(particle, fieldset, time): # adapting AdvectionRK4_3D kernal to only vertical velocity 
-    """Advection of particles using fourth-order Runge-Kutta integration including vertical velocity.
-    Function needs to be converted to Kernel object before execution"""
-    (w1) = fieldset.W[time, particle.depth, particle.lat, particle.lon]
-    #lon1 = particle.lon + u1*.5*particle.dt
-    #lat1 = particle.lat + v1*.5*particle.dt
-    dep1 = particle.depth + w1*.5*particle.dt
-    (w2) = fieldset.W[time + .5 * particle.dt, dep1, particle.lat, particle.lon]
-    #lon2 = particle.lon + u2*.5*particle.dt
-    #lat2 = particle.lat + v2*.5*particle.dt
-    dep2 = particle.depth + w2*.5*particle.dt
-    (w3) = fieldset.W[time + .5 * particle.dt, dep2, particle.lat, particle.lon]
-    #lon3 = particle.lon + u3*particle.dt
-    #lat3 = particle.lat + v3*particle.dt
-    dep3 = particle.depth + w3*particle.dt
-    (w4) = fieldset.W[time + particle.dt, dep3, particle.lat, particle.lon]
-    #particle.lon += particle.lon #(u1 + 2*u2 + 2*u3 + u4) / 6. * particle.dt
-    #particle.lat += particle.lat #lats[1,1] #(v1 + 2*v2 + 2*v3 + v4) / 6. * particle.dt
-    particle.depth += (w1 + 2*w2 + 2*w3 + w4) / 6. * particle.dt
-
-def polyTEOS10_bsq(particle, fieldset, time):
-    # calculates density based on the polyTEOS10-bsq algorithm from Appendix A.2 of
-    # https://www.sciencedirect.com/science/article/pii/S1463500315000566
-    # requires fieldset.abs_salinity and fieldset.cons_temperature Fields in the fieldset
-    # and a particle.density Variable in the ParticleSet
-    #
-    # References:
-    #  Roquet, F., Madec, G., McDougall, T. J., Barker, P. M., 2014: Accurate
-    #   polynomial expressions for the density and specific volume of
-    #   seawater using the TEOS-10 standard. Ocean Modelling.
-    #  McDougall, T. J., D. R. Jackett, D. G. Wright and R. Feistel, 2003:
-    #   Accurate and computationally efficient algorithms for potential
-    #   temperature and density of seawater.  Journal of Atmospheric and
-    #   Oceanic Technology, 20, 730-741.
-
-    Z = - particle.depth  # note: use negative depths!
-    SA = fieldset.abs_salinity[time, particle.depth, particle.lat, particle.lon]
-    CT = fieldset.cons_temperature[time, particle.depth, particle.lat, particle.lon]
-
-    SAu = 40 * 35.16504 / 35
-    CTu = 40
-    Zu = 1e4
-    deltaS = 32
-    R000 = 8.0189615746e+02
-    R100 = 8.6672408165e+02
-    R200 = -1.7864682637e+03
-    R300 = 2.0375295546e+03
-    R400 = -1.2849161071e+03
-    R500 = 4.3227585684e+02
-    R600 = -6.0579916612e+01
-    R010 = 2.6010145068e+01
-    R110 = -6.5281885265e+01
-    R210 = 8.1770425108e+01
-    R310 = -5.6888046321e+01
-    R410 = 1.7681814114e+01
-    R510 = -1.9193502195e+00
-    R020 = -3.7074170417e+01
-    R120 = 6.1548258127e+01
-    R220 = -6.0362551501e+01
-    R320 = 2.9130021253e+01
-    R420 = -5.4723692739e+00
-    R030 = 2.1661789529e+01
-    R130 = -3.3449108469e+01
-    R230 = 1.9717078466e+01
-    R330 = -3.1742946532e+00
-    R040 = -8.3627885467e+00
-    R140 = 1.1311538584e+01
-    R240 = -5.3563304045e+00
-    R050 = 5.4048723791e-01
-    R150 = 4.8169980163e-01
-    R060 = -1.9083568888e-01
-    R001 = 1.9681925209e+01
-    R101 = -4.2549998214e+01
-    R201 = 5.0774768218e+01
-    R301 = -3.0938076334e+01
-    R401 = 6.6051753097e+00
-    R011 = -1.3336301113e+01
-    R111 = -4.4870114575e+00
-    R211 = 5.0042598061e+00
-    R311 = -6.5399043664e-01
-    R021 = 6.7080479603e+00
-    R121 = 3.5063081279e+00
-    R221 = -1.8795372996e+00
-    R031 = -2.4649669534e+00
-    R131 = -5.5077101279e-01
-    R041 = 5.5927935970e-01
-    R002 = 2.0660924175e+00
-    R102 = -4.9527603989e+00
-    R202 = 2.5019633244e+00
-    R012 = 2.0564311499e+00
-    R112 = -2.1311365518e-01
-    R022 = -1.2419983026e+00
-    R003 = -2.3342758797e-02
-    R103 = -1.8507636718e-02
-    R013 = 3.7969820455e-01
-    ss = math.sqrt((SA + deltaS) / SAu)
-    tt = CT / CTu
-    zz = -Z / Zu
-    rz3 = R013 * tt + R103 * ss + R003
-    rz2 = (R022 * tt + R112 * ss + R012) * tt + (R202 * ss + R102) * ss + R002
-    rz1 = (((R041 * tt + R131 * ss + R031) * tt + (R221 * ss + R121) * ss + R021) * tt + ((R311 * ss + R211) * ss + R111) * ss + R011) * tt + (((R401 * ss + R301) * ss + R201) * ss + R101) * ss + R001
-    rz0 = (((((R060 * tt + R150 * ss + R050) * tt + (R240 * ss + R140) * ss + R040) * tt + ((R330 * ss + R230) * ss + R130) * ss + R030) * tt + (((R420 * ss + R320) * ss + R220) * ss + R120) * ss + R020) 
-           * tt + ((((R510 * ss + R410) * ss + R310) * ss + R210) * ss + R110) * ss + R010) * tt + (((((R600 * ss + R500) * ss + R400) * ss + R300) * ss + R200) * ss + R100) * ss + R000
-    particle.density = ((rz3 * zz + rz2) * zz + rz1) * zz + rz0
     
 def Profiles(particle, fieldset, time):  
     particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
@@ -363,6 +259,7 @@ latvals = Lat[:]; lonvals = Lon[:] # extract lat/lon values to numpy arrays
 iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat, minlon)
 iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat, maxlon)
 indices = {'lon': range(ix_min, ix_max), 'lat': range(iy_min, iy_max)}
+mask.close()
 
 fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, indices=indices) #allow_time_extrapolation=True or False
 
@@ -379,8 +276,8 @@ kv_or = np.transpose(np.tile(np.array(upsilon_z),(len(v_lon),len(v_lat),1)), (2,
 sv_or = np.transpose(np.tile(np.array(mu_z),(len(v_lon),len(v_lat),1)), (2,0,1))        # dynamic viscosity of seawater    
 KV = Field('KV',kv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
 SV = Field('SV',sv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
-fieldset.add_field(KV)
-fieldset.add_field(SV)
+fieldset.add_field(KV, 'KV')
+fieldset.add_field(SV, 'SV')
 
 """ Defining the particle set """
 
@@ -399,7 +296,8 @@ outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kg
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
-pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}) 
+pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}) # recovery={ErrorCode.ErrorOutOfBounds: Delete, ErrorThroughSurface: PushBack}
+
 pfile.close()
 
 print('Execution finished')
