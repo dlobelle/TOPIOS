@@ -355,17 +355,18 @@ dimensions = {'U': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': '
               'cons_temperature': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
               'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'}}
 
-initialgrid_mask = dirread+'ORCA0083-N06_20070105d05U.nc'
-mask = xr.open_dataset(initialgrid_mask, decode_times=False)
-Lat, Lon, Depth = mask.variables['nav_lat'], mask.variables['nav_lon'], mask.variables['depthu']
-latvals = Lat[:]; lonvals = Lon[:] # extract lat/lon values to numpy arrays
+# initialgrid_mask = dirread+'ORCA0083-N06_20070105d05U.nc'
+# mask = xr.open_dataset(initialgrid_mask, decode_times=False)
+# Lat, Lon, Depth = mask.variables['nav_lat'], mask.variables['nav_lon'], mask.variables['depthu']
+# latvals = Lat[:]; lonvals = Lon[:] # extract lat/lon values to numpy arrays
 
-iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat, minlon)
-iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat, maxlon)
-indices = {'lon': range(ix_min, ix_max), 'lat': range(iy_min, iy_max)}
-mask.close()
+# iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat, minlon)
+# iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat, maxlon)
+# indices = {'lon': range(ix_min, ix_max), 'lat': range(iy_min, iy_max)}
+# mask.close()
+chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 200, 'x': 200}
 
-fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, indices=indices) #allow_time_extrapolation=True or False
+fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs) # , indices=indices, allow_time_extrapolation=True or False
 
 depths = fieldset.U.depth
 
