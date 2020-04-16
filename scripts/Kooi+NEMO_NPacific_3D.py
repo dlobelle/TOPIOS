@@ -1,7 +1,7 @@
 # 29/01/20- Based on Kooi+NEMO_North Pacific_1D.py but using NEMO-MEDUSA profiles (now grid size is no longer 2x2 since 1/12 deg resolution so can use min lons and lats and then index + 1 for 2x2 grid, or 10x10 grid)
 
 from parcels import FieldSet, ParticleSet, JITParticle, ScipyParticle, AdvectionRK4_3D, AdvectionRK4, ErrorCode, ParticleFile, Variable, Field, NestedField, VectorField, timer 
-from parcels.kernels import seawaterdensity
+from parcels.kernels.seawaterdensity import polyTEOS10_bsq
 from datetime import timedelta as delta
 from datetime import  datetime
 import numpy as np
@@ -33,12 +33,10 @@ lat_release0 = np.tile(np.linspace(30,39,10),[10,1])
 lat_release = lat_release0.T 
 lon_release = np.tile(np.linspace(-165,-156,10),[10,1]) 
 z_release = np.tile(1,[10,10])
+time0 = 0
 
 #------ Choose ------:
-simdays = 5
-time0 = 0
-simhours = 1
-simmins = 30
+simdays = 50
 secsdt = 30
 hrsoutdt = 5
 
@@ -158,19 +156,11 @@ def Kooi(particle,fieldset,time):
 
     particle.depth += vs * particle.dt 
     particle.vs = vs
-    #z = particle.depth # CHECK if removing this is ok
-    #dt = particle.dt # CHECK if removing this is ok
     
 def DeleteParticle(particle, fieldset, time):
     """Kernel for deleting particles if they are out of bounds."""
     print('particle is deleted') #print(particle.lon, particle.lat, particle.depth)
     particle.delete()
-
-def getclosest_ij(lats,lons,latpt,lonpt):     
-    """Function to find the index of the closest point to a certain lon/lat value."""
-    dist_sq = (lats-latpt)**2 + (lons-lonpt)**2                 # find squared distance of every point on grid
-    minindex_flattened = dist_sq.argmin()                       # 1D index of minimum dist_sq element
-    return np.unravel_index(minindex_flattened, lats.shape)     # Get 2D index for latvals and lonvals arrays from 1D index
     
 def Profiles(particle, fieldset, time):  
     particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
@@ -230,7 +220,6 @@ filenames = {'U': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data
              'cons_temperature': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles},
              'abs_salinity': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles}}
 
-
 variables = {'U': 'uo',
              'V': 'vo',
              'W': 'wo',
@@ -255,16 +244,7 @@ dimensions = {'U': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': '
               'cons_temperature': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
               'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'}}
 
-# initialgrid_mask = dirread+'ORCA0083-N06_20070105d05U.nc'
-# mask = xr.open_dataset(initialgrid_mask, decode_times=False)
-# Lat, Lon, Depth = mask.variables['nav_lat'], mask.variables['nav_lon'], mask.variables['depthu']
-# latvals = Lat[:]; lonvals = Lon[:] # extract lat/lon values to numpy arrays
-
-# iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat, minlon)
-# iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat, maxlon)
-# indices = {'lon': range(ix_min, ix_max), 'lat': range(iy_min, iy_max)}
-# mask.close()
-chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 200, 'x': 200}
+chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 200, 'x': 200} # for Parcels 2.1.5, can now define chunksize instead of indices in fieldset
 
 fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs) # , indices=indices, allow_time_extrapolation=True or False
 
