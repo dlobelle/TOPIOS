@@ -66,17 +66,13 @@ def Kooi(particle,fieldset,time):
     if n2<0.: 
         aa = 0.
     else:
-        aa = n2   # [no m-3] to compare to Kooi model    
+        aa = n2                         # [no m-3] to compare to Kooi model    
     
-    #------ Primary productivity (algal growth) only above euphotic zone, condition same as in Kooi et al. 2017
-    if particle.depth<particle.euph_z:
-        tpp0 = particle.tpp3 # (particle.nd_tpp + particle.d_tpp)/particle.euph_z # 2D nondiatom + diatom PP couldn't be converted to a vertical profile (better with TPP3)
-    else:
-        tpp0 = 0.    
-    
-    mu_n0 = tpp0*14.007               # conversion from mmol N m-3 d-1 to mg N m-3 d-1 (atomic weight of 1 mol of N = 14.007 g) 
-    mu_n = mu_n0/med_N2cell           # conversion from mg N m-3 d-1 to no. m-3 d-1
-    mu_n2 = mu_n/aa                   # conversion from no. m-3 d-1 to d-1
+    #------ Primary productivity (algal growth) from MEDUSA TPP3 (no longer condition of only above euphotic zone, since not much diff in results)
+    tpp0 = particle.tpp3              # [mmol N m-3 d-1]
+    mu_n0 = tpp0*14.007               # conversion from [mmol N m-3 d-1] to [mg N m-3 d-1] (atomic weight of 1 mol of N = 14.007 g) 
+    mu_n = mu_n0/med_N2cell           # conversion from [mg N m-3 d-1] to [no. m-3 d-1]
+    mu_n2 = mu_n/aa                   # conversion from [no. m-3 d-1] to [d-1]
     
     if mu_n2<0.:
         mu_aa = 0.
@@ -160,7 +156,7 @@ def Kooi(particle,fieldset,time):
 def DeleteParticle(particle, fieldset, time):
     """Kernel for deleting particles if they are out of bounds."""
     print('particle is deleted') #print(particle.lon, particle.lat, particle.depth)
-    particle.delete()
+    particle.delete() 
     
 def Profiles(particle, fieldset, time):  
     particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
@@ -277,7 +273,7 @@ pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which th
 
 kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) 
 
-outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/Kooi+NEMO_3D_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(simdays)+'days_'+str(secsdt)+'dtsecs_'+str(hrsoutdt)+'hrsoutdt'
+outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/Kooi+NEMO_3D_noEuphZCond_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt'
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
