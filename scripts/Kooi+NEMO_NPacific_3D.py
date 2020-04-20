@@ -36,7 +36,7 @@ z_release = np.tile(1,[10,10])
 time0 = 0
 
 #------ Choose ------:
-simdays = 50
+simdays = 30
 secsdt = 30
 hrsoutdt = 5
 
@@ -44,10 +44,11 @@ hrsoutdt = 5
 rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1 in Kooi: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
 r_pl = "1e-04"                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
 
-"""functions and kernals"""
+"""functions and kernels"""
+
 def Kooi(particle,fieldset,time):  
     """
-    Kernal to compute the vertical velocity (Vs) of particles due to changes in algal concentrations, growth and death of attached algae based on Kooi et al. 2017 model 
+    Kernel to compute the vertical velocity (Vs) of particles due to changes in ambient algal concentrations, growth and death of attached algae based on Kooi et al. 2017 model 
     """
     #------ CHOOSE density and size of particles -----
     rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
@@ -142,22 +143,33 @@ def Kooi(particle,fieldset,time):
     #------ Settling of particle -----
     if z >= 4000.: 
         vs = 0
-    elif z < 1. and delta_rho < 0:
-        vs = 0  
+#     elif z < 1. and delta_rho < 0:
+#         vs = 0  
     elif delta_rho > 0:
         vs = (g * kin_visc * w * delta_rho)**(1./3.)
     else: 
         a_del_rho = delta_rho*-1.
         vs = -1.*(g * kin_visc * w * a_del_rho)**(1./3.)  # m s-1
+    
+    z0 = z + vs * particle.dt
+    if z0 <0.6: # NEMO's 'surface depth'
+        particle.depth = 0.6
+    else:          
+        particle.depth += vs * particle.dt 
 
-    particle.depth += vs * particle.dt 
     particle.vs = vs
     
 def DeleteParticle(particle, fieldset, time):
     """Kernel for deleting particles if they are out of bounds."""
     print('particle is deleted') #print(particle.lon, particle.lat, particle.depth)
     particle.delete() 
-    
+
+# def PushBack(particle, fieldset, time):
+#     """ Kernel to avoid deleting particles that reach the surface"""
+#     print('particle pushed back')
+#     particle.depth = 0.6
+
+        
 def Profiles(particle, fieldset, time):  
     particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
     particle.d_phy= fieldset.d_phy[time, particle.depth,particle.lat,particle.lon]  
@@ -273,11 +285,11 @@ pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which th
 
 kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) 
 
-outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/Kooi+NEMO_3D_noEuphZCond_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt'
+outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/Kooi+NEMO_3D_noEuphZCondandPushBack_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
-pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}) # recovery={ErrorCode.ErrorOutOfBounds: Delete, ErrorThroughSurface: PushBack}
+pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}) #, ErrorCode.ErrorThroughSurface: PushBack})
 
 pfile.close()
 
