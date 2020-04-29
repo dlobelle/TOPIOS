@@ -34,21 +34,21 @@ warnings.filterwarnings("ignore")
 # lon_release = np.tile(np.linspace(minlon+10,maxlon-11,10),[10,1]) 
 # z_release = np.tile(1,[10,10])
 
-#minlat = min(lat_release) 
-#maxlat = max(lat_release) 
-#minlon = min(lon_release)
-#maxlon = max(lon_release)
-
 # load particle release locations (10x10 degree global) from plot_NEMO_landmask.ipynb
-with open('/home/dlobelle/Kooi_data/data_input/mask_globalNEMO_10x10_lat_lon.pickle', 'rb') as f:  
+with open('/home/dlobelle/Kooi_data/data_input/mask_-170to0_NEMO_10x10_lat_lon.pickle', 'rb') as f:  
     lat_release,lon_release = pickle.load(f)
 
 z_release = np.tile(1,len(lat_release))
 time0 = 0
 
+
+minlat = min(lat_release) 
+maxlat = max(lat_release) 
+minlon = min(lon_release)
+maxlon = max(lon_release)
 #------ Choose ------:
-simdays = 30
-secsdt = 60
+simdays = 100
+secsdt = 120
 hrsoutdt = 5
 
 #--------- CHOOSE density and size of particles: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL BELOW -----
@@ -178,6 +178,8 @@ def DeleteParticle(particle, fieldset, time):
 def periodicBC(particle, fieldset, time):
     if particle.lon > 180:
         particle.lon -= 360
+    if particle.lon < -180:
+        particle.lon += 360
         
 def Profiles(particle, fieldset, time):  
     particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
@@ -251,43 +253,43 @@ dimensions = {'U': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': '
               'cons_temperature': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
               'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'}}
 
-chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 200, 'x': 200} # for Parcels 2.1.5, can now define chunksize instead of indices in fieldset
+chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 100, 'x': 100} # for Parcels 2.1.5, can now define chunksize instead of indices in fieldset
 
 fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs) #field_chunksize = False , allow_time_extrapolation=True or False
 
 
-lons = fieldset.U.lon
-lats = fieldset.U.lat
-depths = fieldset.U.depth
-
-with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
-    depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
-
-kv_or = np.transpose(np.tile(np.array(upsilon_z),(len(lats),len(lons[0]),1)), (2,0,1)) # kinematic viscosity
-sv_or = np.transpose(np.tile(np.array(mu_z),(len(lats),len(lons[0]),1)), (2,0,1)) # dynamic viscosity of seawater    
-#print(kv_or.shape)
-KV = Field('KV',kv_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='U'
-SV = Field('SV',sv_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='V'
-        
-fieldset.add_field(KV, 'KV')
-fieldset.add_field(SV, 'SV')
-
-
+# lons = fieldset.U.lon
+# lats = fieldset.U.lat
 # depths = fieldset.U.depth
 
-# ------ Kinematic viscosity and dynamic viscosity not available in MEDUSA so replicating Kooi's profiles at all grid points ------
 # with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
 #     depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
 
-# v_lon = np.array([minlon,maxlon]) 
-# v_lat = np.array([minlat,maxlat]) 
-
-# kv_or = np.transpose(np.tile(np.array(upsilon_z),(len(v_lon),len(v_lat),1)), (2,0,1))   # kinematic viscosity
-# sv_or = np.transpose(np.tile(np.array(mu_z),(len(v_lon),len(v_lat),1)), (2,0,1))        # dynamic viscosity of seawater    
-# KV = Field('KV',kv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
-# SV = Field('SV',sv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
+# kv_or = np.transpose(np.tile(np.array(upsilon_z),(len(lats),len(lons[0]),1)), (2,0,1)) # kinematic viscosity
+# sv_or = np.transpose(np.tile(np.array(mu_z),(len(lats),len(lons[0]),1)), (2,0,1)) # dynamic viscosity of seawater    
+# #print(kv_or.shape)
+# KV = Field('KV',kv_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='U'
+# SV = Field('SV',sv_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='V'
+        
 # fieldset.add_field(KV, 'KV')
 # fieldset.add_field(SV, 'SV')
+
+
+depths = fieldset.U.depth
+
+#------ Kinematic viscosity and dynamic viscosity not available in MEDUSA so replicating Kooi's profiles at all grid points ------
+with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
+    depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
+
+v_lon = np.array([minlon,maxlon]) 
+v_lat = np.array([minlat,maxlat]) 
+
+kv_or = np.transpose(np.tile(np.array(upsilon_z),(len(v_lon),len(v_lat),1)), (2,0,1))   # kinematic viscosity
+sv_or = np.transpose(np.tile(np.array(mu_z),(len(v_lon),len(v_lat),1)), (2,0,1))        # dynamic viscosity of seawater    
+KV = Field('KV',kv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
+SV = Field('SV',sv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
+fieldset.add_field(KV, 'KV')
+fieldset.add_field(SV, 'SV')
 
 """ Defining the particle set """
 
@@ -300,9 +302,9 @@ pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which th
 
 """ Kernal + Execution"""
 
-kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #+ pset.Kernel(periodicBC)
+kernels = pset.Kernel(periodicBC) + pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi)
 
-outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/globalKooi+NEMO_3D_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/-170to0lon_Kooi+NEMO_3D_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
