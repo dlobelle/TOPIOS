@@ -22,34 +22,17 @@ import scipy.linalg
 import math as math
 warnings.filterwarnings("ignore")
 
-#------ Fieldset grid is 30x30 deg in North Pacific ------
-# minlat = 20 
-# maxlat = 50 
-# minlon = -110 #-175 
-# maxlon = -80 #-145 
-
-# #------ Release particles on a 10x10 deg grid in middle of the 30x30 fieldset grid and 1m depth ------
-# lat_release0 = np.tile(np.linspace(minlat+10,maxlat-11,10),[10,1]) 
-# lat_release = lat_release0.T 
-# lon_release = np.tile(np.linspace(minlon+10,maxlon-11,10),[10,1]) 
-# z_release = np.tile(1,[10,10])
-
 # load particle release locations (10x10 degree global) from plot_NEMO_landmask.ipynb
-with open('/home/dlobelle/Kooi_data/data_input/mask_SAtl_NEMO_10x10_lat_lon.pickle', 'rb') as f:  
+with open('/home/dlobelle/Kooi_data/data_input/mask_global_NEMO_10x10_lat_lon.pickle', 'rb') as f:  #
     lat_release,lon_release = pickle.load(f)
 
-z_release = np.tile(10,len(lat_release))
+z_release = np.tile(1,len(lat_release))
 time0 = 0
 
-
-#minlat = min(lat_release)-10
-#maxlat = max(lat_release)+10
-#minlon = min(lon_release)-10
-#maxlon = max(lon_release)+10
 #------ Choose ------:
-simdays = 2
-secsdt = 1
-hrsoutdt = 5
+simdays = 110 #10
+secsdt = 60 
+hrsoutdt = 12
 
 #--------- CHOOSE density and size of particles: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL BELOW -----
 rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1 in Kooi: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
@@ -63,7 +46,7 @@ def Kooi(particle,fieldset,time):
     """
     #------ CHOOSE density and size of particles -----
     lon = particle.lon
-    print(lon)
+    #print(lon)
     rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
     r_pl = 1e-04                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
     
@@ -155,9 +138,7 @@ def Kooi(particle,fieldset,time):
     
     #------ Settling of particle -----
     if z >= 4000.: 
-        vs = 0
-#     elif z < 1. and delta_rho < 0:
-#         vs = 0  
+        vs = 0 
     elif delta_rho > 0:
         vs = (g * kin_visc * w * delta_rho)**(1./3.)
     else: 
@@ -268,41 +249,14 @@ lons = fieldset.U.lon
 lats = fieldset.U.lat
 depths = fieldset.U.depth
 
-# with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
-#     depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
-
-# kv_or = np.transpose(np.tile(np.array(upsilon_z),(len(lats),len(lons[0]),1)), (2,0,1)) # kinematic viscosity
-# sv_or = np.transpose(np.tile(np.array(mu_z),(len(lats),len(lons[0]),1)), (2,0,1)) # dynamic viscosity of seawater    
-# #print(kv_or.shape)
-# KV = Field('KV',kv_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='U'
-# SV = Field('SV',sv_or,lon=lons,lat=lats,depth = depths, mesh='spherical')#,fieldtype='V'
-        
-# fieldset.add_field(KV, 'KV')
-# fieldset.add_field(SV, 'SV')
-
-
-#depths = fieldset.U.depth
-
 #------ Kinematic viscosity and dynamic viscosity not available in MEDUSA so replicating Kooi's profiles at all grid points ------
 with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
     depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
 
-print(np.array(upsilon_z).shape)
 KV = Field('KV', np.array(upsilon_z), lon=0, lat=0, depth=depths, mesh='spherical') #np.empty(1)
-SV = Field('SV', np.array(upsilon_z), lon=0, lat=0, depth=depths, mesh='spherical')
+SV = Field('SV', np.array(mu_z), lon=0, lat=0, depth=depths, mesh='spherical')
 fieldset.add_field(KV, 'KV')
 fieldset.add_field(SV, 'SV')
-    
-#v_lon = np.array([minlon,maxlon]) 
-#v_lat = np.array([minlat,maxlat]) 
-
-# kv_or = np.transpose(np.tile(np.array(upsilon_z),(len(v_lon),len(v_lat),1)), (2,0,1))   # kinematic viscosity
-# sv_or = np.transpose(np.tile(np.array(mu_z),(len(v_lon),len(v_lat),1)), (2,0,1))        # dynamic viscosity of seawater    
-# KV = Field('KV',kv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
-# SV = Field('SV',sv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,transpose="True") #,fieldtype='U')
-# fieldset.add_field(KV, 'KV')
-# fieldset.add_field(SV, 'SV')
-
 
 """ Defining the particle set """
 
@@ -315,13 +269,13 @@ pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which th
 
 """ Kernal + Execution"""
 
-kernels = pset.Kernel(periodicBC) + pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi)
+kernels = pset.Kernel(periodicBC) + pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
 
-outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/SAtl_Kooi+NEMO_3D_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/global_Kooi+NEMO_3D_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
-pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}) #, ErrorCode.ErrorThroughSurface: PushBack})
+pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
 
 pfile.close()
 
