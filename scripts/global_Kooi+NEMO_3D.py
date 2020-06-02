@@ -20,17 +20,20 @@ import operator
 from numpy import *
 import scipy.linalg
 import math as math
+from argparse import ArgumentParser
 warnings.filterwarnings("ignore")
 
 # load particle release locations (10x10 degree global) from plot_NEMO_landmask.ipynb
-with open('/home/dlobelle/Kooi_data/data_input/mask_global_NEMO_10x10_lat_lon.pickle', 'rb') as f:  #
+loc = 'global' #SAtl global
+res = '2x2'
+with open('/home/dlobelle/Kooi_data/data_input/mask_'+loc+'_NEMO_'+res+'_lat_lon.pickle', 'rb') as f:  #
     lat_release,lon_release = pickle.load(f)
 
 z_release = np.tile(1,len(lat_release))
 time0 = 0
 
 #------ Choose ------:
-simdays = 110 #10
+simdays = 90 #10
 secsdt = 60 
 hrsoutdt = 12
 
@@ -194,89 +197,121 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
     a = Variable('a',dtype=np.float32,to_write=False)
     vs = Variable('vs',dtype=np.float32,to_write=True)    
+
     
-""" Defining the fieldset""" 
+if __name__ == "__main__":     
+    p = ArgumentParser(description="""choose starting month and year""")
+    p.add_argument('-mon', choices = ('12','03','06','09'), action="store", dest="mon", 
+                   help='start month for the run')
+    p.add_argument('-yr', choices = ('2000','2001','2002','2003','2004','2005','2006','2007','2008','2009','2010'), action="store", dest="yr",
+                   help='start year for the run')
+                   
+    args = p.parse_args()
+    mon = args.mon
+    yr = args.yr
+    
+    """ Defining the fieldset""" 
 
-dirread = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/means/'
-dirread_bgc = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA_BGC/ORCA0083-N006/means/'  
-dirread_mesh = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/domain/'  
+    dirread = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/means/'
+    dirread_bgc = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA_BGC/ORCA0083-N006/means/'  
+    dirread_mesh = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/domain/'  
 
-ufiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05U.nc')) #0105d05
-vfiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05V.nc'))
-wfiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05W.nc'))
-pfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_2007*d05P.nc'))
-ppfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_2007*d05D.nc'))
-tsfiles = sorted(glob(dirread+'ORCA0083-N06_2007*d05T.nc'))
-mesh_mask = dirread_mesh+'coordinates.nc'
-bathy_mask = dirread_mesh+'bathymetry_ORCA12_V3.3.nc'
+    if mon =='12':
+        yr2 = str(int(yr)+1)
+        ufiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05U.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05U.nc')))
+        vfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05V.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05V.nc')))
+        wfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05W.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05W.nc')))
+        pfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+mon+'*d05P.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05P.nc')))
+        ppfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+mon+'*d05D.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05D.nc')))
+        tsfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05T.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05T.nc')))
+    else:
+        yr2=yr
+        ufiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05U.nc')) 
+        vfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05V.nc')) 
+        wfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05W.nc')) 
+        pfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+mon+'*d05P.nc')) 
+        ppfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+mon+'*d05D.nc')) 
+        tsfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05T.nc')) 
+        
+    mesh_mask = dirread_mesh+'coordinates.nc'
+    bathy_mask = dirread_mesh+'bathymetry_ORCA12_V3.3.nc'
 
-filenames = {'U': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': ufiles}, #'depth': wfiles,
-             'V': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': vfiles},
-             'W': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': wfiles},
-             'd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': pfiles},
-             'nd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': pfiles},  
-             'euph_z': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles},
-             'tpp3': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': ppfiles},
-             'cons_temperature': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles},
-             'abs_salinity': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles}}
+    filenames = {'U': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': ufiles}, #'depth': wfiles,
+                 'V': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': vfiles},
+                 'W': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': wfiles},
+                 'd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': pfiles},
+                 'nd_phy': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': pfiles},  
+                 'euph_z': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles},
+                 'tpp3': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': ppfiles},
+                 'cons_temperature': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles},
+                 'abs_salinity': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles}}
 
-variables = {'U': 'uo',
-             'V': 'vo',
-             'W': 'wo',
-             'd_phy': 'PHD',
-             'nd_phy': 'PHN',
-             'euph_z': 'MED_XZE',
-             'tpp3': 'TPP3', # units: mmolN/m3/d 
-             'cons_temperature': 'potemp',
-             'abs_salinity': 'salin'}
+    variables = {'U': 'uo',
+                 'V': 'vo',
+                 'W': 'wo',
+                 'd_phy': 'PHD',
+                 'nd_phy': 'PHN',
+                 'euph_z': 'MED_XZE',
+                 'tpp3': 'TPP3', # units: mmolN/m3/d 
+                 'cons_temperature': 'potemp',
+                 'abs_salinity': 'salin'}
 
-dimensions = {'U': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': 'time_counter'}, #time_centered
-              'V': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': 'time_counter'},
-              'W': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': 'time_counter'},
-              'd_phy': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
-              'nd_phy': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
-              'euph_z': {'lon': 'glamf', 'lat': 'gphif','time': 'time_counter'},
-              'tpp3': {'lon': 'glamf', 'lat': 'gphif','depth': 'depthw', 'time': 'time_counter'},
-              'cons_temperature': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
-              'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'}}
+    dimensions = {'U': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': 'time_counter'}, #time_centered
+                  'V': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': 'time_counter'},
+                  'W': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': 'time_counter'},
+                  'd_phy': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
+                  'nd_phy': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
+                  'euph_z': {'lon': 'glamf', 'lat': 'gphif','time': 'time_counter'},
+                  'tpp3': {'lon': 'glamf', 'lat': 'gphif','depth': 'depthw', 'time': 'time_counter'},
+                  'cons_temperature': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
+                  'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'}}
 
-chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 100, 'x': 100} # for Parcels 2.1.5, can now define chunksize instead of indices in fieldset
+    chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 100, 'x': 100} # for Parcels 2.1.5, can now define chunksize instead of indices in fieldset
 
-fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs) #field_chunksize = False , allow_time_extrapolation=True or False
+    fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs) #field_chunksize = False , allow_time_extrapolation=True or False
 
 
-lons = fieldset.U.lon
-lats = fieldset.U.lat
-depths = fieldset.U.depth
+    lons = fieldset.U.lon
+    lats = fieldset.U.lat
+    depths = fieldset.U.depth
 
-#------ Kinematic viscosity and dynamic viscosity not available in MEDUSA so replicating Kooi's profiles at all grid points ------
-with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
-    depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
+    #------ Kinematic viscosity and dynamic viscosity not available in MEDUSA so replicating Kooi's profiles at all grid points ------
+    with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
+        depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
 
-KV = Field('KV', np.array(upsilon_z), lon=0, lat=0, depth=depths, mesh='spherical') #np.empty(1)
-SV = Field('SV', np.array(mu_z), lon=0, lat=0, depth=depths, mesh='spherical')
-fieldset.add_field(KV, 'KV')
-fieldset.add_field(SV, 'SV')
+    KV = Field('KV', np.array(upsilon_z), lon=0, lat=0, depth=depths, mesh='spherical') #np.empty(1)
+    SV = Field('SV', np.array(mu_z), lon=0, lat=0, depth=depths, mesh='spherical')
+    fieldset.add_field(KV, 'KV')
+    fieldset.add_field(SV, 'SV')
 
-""" Defining the particle set """
+    """ Defining the particle set """
 
-pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
-                             pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
-                             lon= lon_release, #-160.,  # a vector of release longitudes 
-                             lat= lat_release, #36., 
-                             time = time0,
-                             depth = z_release) #[1.]
+    pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
+                                 pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
+                                 lon= lon_release, #-160.,  # a vector of release longitudes 
+                                 lat= lat_release, #36., 
+                                 time = time0,
+                                 depth = z_release) #[1.]
 
-""" Kernal + Execution"""
+    """ Kernal + Execution"""
+    if mon=='12':
+        s = 'DJF'
+    elif mon=='03':
+        s = 'MAM'
+    elif mon=='06':
+        s = 'JJA'
+    elif mon=='09':
+        s = 'SON'
 
-kernels = pset.Kernel(periodicBC) + pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
+    kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
 
-outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/global_Kooi+NEMO_3D_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+    outfile = '/home/dlobelle/Kooi_data/data_output/rho_'+str(int(rho_pl))+'kgm-3/res_'+res+'/'+loc+'_'+s+'_'+yr2+'_3D_grid'+res+'_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
-pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
+    pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
-pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
+    pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
 
-pfile.close()
+    pfile.close()
 
-print('Execution finished')
+    print('Execution finished')
+
