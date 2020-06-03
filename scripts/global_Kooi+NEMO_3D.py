@@ -226,12 +226,12 @@ if __name__ == "__main__":
         tsfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05T.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05T.nc')))
     else:
         yr2=yr
-        ufiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05U.nc')) 
-        vfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05V.nc')) 
-        wfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05W.nc')) 
-        pfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+mon+'*d05P.nc')) 
-        ppfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+mon+'*d05D.nc')) 
-        tsfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05T.nc')) 
+        ufiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05U.nc')) 
+        vfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05V.nc')) 
+        wfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05W.nc')) 
+        pfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+'*d05P.nc')) 
+        ppfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+'*d05D.nc')) 
+        tsfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05T.nc')) 
         
     mesh_mask = dirread_mesh+'coordinates.nc'
     bathy_mask = dirread_mesh+'bathymetry_ORCA12_V3.3.nc'
@@ -290,7 +290,7 @@ if __name__ == "__main__":
                                  pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
                                  lon= lon_release, #-160.,  # a vector of release longitudes 
                                  lat= lat_release, #36., 
-                                 time = time0,
+                                 time = np.datetime64('%s-%s-01' % (yr, mon)),
                                  depth = z_release) #[1.]
 
     """ Kernal + Execution"""
