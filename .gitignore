@@ -4,5 +4,6 @@
 scripts/core*
 scripts/old_scripts
 scripts/from_others
-
-
+slurm*
+.ipynb*
+jobscript
