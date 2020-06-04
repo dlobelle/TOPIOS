@@ -284,8 +284,8 @@ if __name__ == "__main__":
     Lat, Lon = mask.variables['nav_lat'], mask.variables['nav_lon']
     latvals = Lat[:]; lonvals = Lon[:] # extract lat/lon values to numpy arrays
                                                                                                
-    iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat-5, minlon-1)
-    iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat+5, maxlon+2)
+    iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat-5, minlon)
+    iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat+5, maxlon+1)
 
     indices = {'lon': range(ix_min, ix_max), 'lat': range(iy_min, iy_max)}  # 'depth': range(0, 2000)
 
