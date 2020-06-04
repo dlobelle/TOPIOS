@@ -1,7 +1,6 @@
 #!/bin/bash
-#SBATCH -t 5-00:00:00
-#SBATCH -p fat             
-#SBATCH -n 4        
+#SBATCH -t 1-00:00:00             
+#SBATCH -n 1        
 #SBATCH --mail-type=begin       
 #SBATCH --mail-type=end         
 #SBATCH --mail-type=fail        
@@ -9,7 +8,7 @@
 
 echo 'Initiating global run JJA 2001...'
 
-srun python global_Kooi+NEMO_3D.py -mon='06' -yr='2001'
+python global_Kooi+NEMO_3D.py -mon='06' -yr='2001'
 
 
 echo 'Finished computation.'
