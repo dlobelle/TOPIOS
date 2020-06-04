@@ -1,4 +1,4 @@
-# 20/04/20- Modifying Kooi+NEMO_North Pacific_3D.py to release particles globally on 1x1 grid 
+# 20/04/20- Modifying Kooi+NEMO_NPacific_3D.py to release particles globally
 
 from parcels import FieldSet, ParticleSet, JITParticle, ScipyParticle, AdvectionRK4_3D, AdvectionRK4, ErrorCode, ParticleFile, Variable, Field, NestedField, VectorField, timer 
 from parcels.kernels.TEOSseawaterdensity import PolyTEOS10_bsq
@@ -23,14 +23,18 @@ import math as math
 from argparse import ArgumentParser
 warnings.filterwarnings("ignore")
 
-# load particle release locations (10x10 degree global) from plot_NEMO_landmask.ipynb
-loc = 'global' #SAtl global
+# load particle release locations from plot_NEMO_landmask.ipynb
+loc = 'south_global' #SAtl global
 res = '2x2'
 with open('/home/dlobelle/Kooi_data/data_input/mask_'+loc+'_NEMO_'+res+'_lat_lon.pickle', 'rb') as f:  #
     lat_release,lon_release = pickle.load(f)
 
 z_release = np.tile(1,len(lat_release))
-time0 = 0
+
+minlat = min(lat_release)
+maxlat = max(lat_release)
+minlon = min(lon_release)
+maxlon = max(lon_release)
 
 #------ Choose ------:
 simdays = 90 #10
@@ -39,7 +43,7 @@ hrsoutdt = 12
 
 #--------- CHOOSE density and size of particles: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL BELOW -----
 rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1 in Kooi: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-r_pl = "1e-04"                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
+r_pl = "1e-05"                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
 
 """functions and kernels"""
 
@@ -51,7 +55,7 @@ def Kooi(particle,fieldset,time):
     lon = particle.lon
     #print(lon)
     rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-    r_pl = 1e-04                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
+    r_pl = 1e-05                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
     
     #------ Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
     min_N2cell = 2656.0e-09 #[mgN cell-1] (from Menden-Deuer and Lessard 2000)
@@ -160,6 +164,12 @@ def DeleteParticle(particle, fieldset, time):
     """Kernel for deleting particles if they are out of bounds."""
     print('particle is deleted') #print(particle.lon, particle.lat, particle.depth)
     particle.delete() 
+    
+def getclosest_ij(lats,lons,latpt,lonpt):     
+    """Function to find the index of the closest point to a certain lon/lat value."""
+    dist_sq = (lats-latpt)**2 + (lons-lonpt)**2                 # find squared distance of every point on grid
+    minindex_flattened = dist_sq.argmin()                       # 1D index of minimum dist_sq element
+    return np.unravel_index(minindex_flattened, lats.shape)     # Get 2D index for latvals and lonvals arrays from 1D index
 
 def periodicBC(particle, fieldset, time):
     if particle.lon < 0.:
@@ -188,7 +198,7 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     v = Variable('v', dtype=np.float32,to_write=False)
     w = Variable('w', dtype=np.float32,to_write=False)
     temp = Variable('temp',dtype=np.float32,to_write=False)
-    density = Variable('density',dtype=np.float32,to_write=True)
+    density = Variable('density',dtype=np.float32,to_write=False)
     tpp3 = Variable('tpp3',dtype=np.float32,to_write=False)
     euph_z = Variable('euph_z',dtype=np.float32,to_write=False)
     d_phy = Variable('d_phy',dtype=np.float32,to_write=False)
@@ -226,12 +236,12 @@ if __name__ == "__main__":
         tsfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05T.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05T.nc')))
     else:
         yr2=yr
-        ufiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05U.nc')) 
-        vfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05V.nc')) 
-        wfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05W.nc')) 
-        pfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+mon+'*d05P.nc')) 
-        ppfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+mon+'*d05D.nc')) 
-        tsfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05T.nc')) 
+        ufiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05U.nc')) 
+        vfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05V.nc')) 
+        wfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05W.nc')) 
+        pfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+'*d05P.nc')) 
+        ppfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+'*d05D.nc')) 
+        tsfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05T.nc')) 
         
     mesh_mask = dirread_mesh+'coordinates.nc'
     bathy_mask = dirread_mesh+'bathymetry_ORCA12_V3.3.nc'
@@ -266,9 +276,20 @@ if __name__ == "__main__":
                   'cons_temperature': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
                   'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'}}
 
-    chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 100, 'x': 100} # for Parcels 2.1.5, can now define chunksize instead of indices in fieldset
+    chs = {'time_counter': 1, 'depthu': 25, 'depthv': 25, 'depthw': 25, 'deptht': 25, 'y': len(lat_release), 'x': len(lon_release)}
+    #chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 100, 'x': 100} # for Parcels 2.1.5, can now define chunksize instead of indices in fieldset
+    
+    initialgrid_mask = dirread+'ORCA0083-N06_20070105d05U.nc'
+    mask = xr.open_dataset(initialgrid_mask, decode_times=False)
+    Lat, Lon = mask.variables['nav_lat'], mask.variables['nav_lon']
+    latvals = Lat[:]; lonvals = Lon[:] # extract lat/lon values to numpy arrays
+                                                                                               
+    iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat-5, minlon-1)
+    iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat+5, maxlon+2)
 
-    fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs) #field_chunksize = False , allow_time_extrapolation=True or False
+    indices = {'lon': range(ix_min, ix_max), 'lat': range(iy_min, iy_max)}  # 'depth': range(0, 2000)
+
+    fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs, indices = indices) #chs) #field_chunksize = False , allow_time_extrapolation=True or False
 
 
     lons = fieldset.U.lon
@@ -290,7 +311,7 @@ if __name__ == "__main__":
                                  pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
                                  lon= lon_release, #-160.,  # a vector of release longitudes 
                                  lat= lat_release, #36., 
-                                 time = time0,
+                                 time = np.datetime64('%s-%s-01' % (yr, mon)),
                                  depth = z_release) #[1.]
 
     """ Kernal + Execution"""
