@@ -73,6 +73,6 @@ for idx,s in enumerate(['DJF', 'MAM', 'JJA', 'SON']): # the 4 seasons
     m.scatter(xs, ys, marker='.', c=n,cmap = cmap, s = 100,zorder=1) 
     #m.colorbar() # I CAN'T GET THE COLORBAR TO WORK (IT WORKED WITHOUT A LOOP)
     m.scatter(xn,yn, marker= '.', c = 'grey',s = 100,zorder=2)
-    axs[idx].title.set_text(s, fontsize = 20)
+    axs[idx].title.set_text(s)
     
 fig.suptitle('Average settling onset time [days], rho ='+rho+', size ='+size ,size = 20)
