@@ -23,27 +23,10 @@ import math as math
 from argparse import ArgumentParser
 warnings.filterwarnings("ignore")
 
-# load particle release locations from plot_NEMO_landmask.ipynb
-loc = 'north_global' #global
-res = '2x2'
-with open('/home/dlobelle/Kooi_data/data_input/mask_'+loc+'_NEMO_'+res+'_lat_lon.pickle', 'rb') as f:  #
-    lat_release,lon_release = pickle.load(f)
-
-z_release = np.tile(1,len(lat_release))
-
-minlat = min(lat_release)
-maxlat = max(lat_release)
-minlon = min(lon_release)
-maxlon = max(lon_release)
-
 #------ Choose ------:
-simdays = 90 #10
+simdays = 1 #90 #10
 secsdt = 60 
 hrsoutdt = 12
-
-#--------- CHOOSE density and size of particles: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL BELOW -----
-rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1 in Kooi: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-r_pl = "1e-05"                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
 
 """functions and kernels"""
 
@@ -52,10 +35,9 @@ def Kooi(particle,fieldset,time):
     Kernel to compute the vertical velocity (Vs) of particles due to changes in ambient algal concentrations, growth and death of attached algae based on Kooi et al. 2017 model 
     """
     #------ CHOOSE density and size of particles -----
-    lon = particle.lon
-    #print(lon)
-    rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-    r_pl = 1e-05                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
+    rho_pl = particle.rho_pl  # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
+    print(rho_pl)
+    r_pl = particle.r_pl #1e-05    # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
     
     #------ Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
     min_N2cell = 2656.0e-09 #[mgN cell-1] (from Menden-Deuer and Lessard 2000)
@@ -190,6 +172,8 @@ def Profiles(particle, fieldset, time):
     particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
     particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
     particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
+    particle.rho_pl = fieldset.rhopl[time,particle.depth,particle.lat,particle.lon]
+    particle.rpl = fieldset.rpl[time,particle.depth,particle.lat,particle.lon]
     
 """ Defining the particle class """
 
@@ -206,6 +190,8 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
     sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
     a = Variable('a',dtype=np.float32,to_write=False)
+    rho_pl = Variable('rhopl',dtype=np.float32,to_write=False)
+    r_pl = Variable('rpl',dtype=np.float32,to_write=False)
     vs = Variable('vs',dtype=np.float32,to_write=True)    
 
     
@@ -215,10 +201,32 @@ if __name__ == "__main__":
                    help='start month for the run')
     p.add_argument('-yr', choices = ('2000','2001','2002','2003','2004','2005','2006','2007','2008','2009','2010'), action="store", dest="yr",
                    help='start year for the run')
+    p.add_argument('-loc', choices = ('global','eq_global','south_global','north_global','SAtl'), action = "store", dest = "loc",
+                   help ='location where particles released')
+    p.add_argument('-rpl', choices = ('1e-02', '1e-05', '1e-07'), action = "store", dest = "rpl",
+                   help ='radius or size of plastic')
+    p.add_argument('-rhopl', choices = ('840', '920', '940'), action = "store", dest = "rhopl",
+                   help ='density of plastic')
                    
     args = p.parse_args()
     mon = args.mon
     yr = args.yr
+    loc = args.loc
+    rpl = args.rpl
+    rhopl = args.rhopl   
+    
+    """ Load particle release locations from plot_NEMO_landmask.ipynb """
+    res = '10x10' #
+    with open('/home/dlobelle/Kooi_data/data_input/mask_'+loc+'_NEMO_'+res+'_lat_lon.pickle', 'rb') as f:  #
+        lat_release,lon_release = pickle.load(f)
+
+    z_release = np.tile(1,len(lat_release))
+
+    minlat = min(lat_release)
+    maxlat = max(lat_release)
+    minlon = min(lon_release)
+    maxlon = max(lon_release)
+    
     
     """ Defining the fieldset""" 
 
@@ -274,8 +282,6 @@ if __name__ == "__main__":
                   'tpp3': {'lon': 'glamf', 'lat': 'gphif','depth': 'depthw', 'time': 'time_counter'},
                   'cons_temperature': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
                   'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'}}
-
-    #chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 100, 'x': 100} # for Parcels 2.1.5, can now define chunksize instead of indices in fieldset
     
     initialgrid_mask = dirread+'ORCA0083-N06_20070105d05U.nc'
     mask = xr.open_dataset(initialgrid_mask, decode_times=False)
@@ -287,9 +293,9 @@ if __name__ == "__main__":
 
     indices = {'lat': range(iy_min, iy_max)}  # 'depth': range(0, 2000) 'lon': range(ix_min, ix_max), 
 
-    chs = {'time_counter': 1, 'depthu': 25, 'depthv': 25, 'depthw': 25, 'deptht': 25, 'y': 1000, 'x': len(lonvals[0])}
+    chs = {'time_counter': 1, 'depthu': 25, 'depthv': 25, 'depthw': 25, 'deptht': 25, 'y': 1000, 'x': len(lonvals[0])} #'deptht': 75, 'y': 100, 'x': 100
         
-    fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs, indices = indices) #chs) #field_chunksize = False , allow_time_extrapolation=True or False
+    fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs, indices = indices) 
 
     lons = fieldset.U.lon
     lats = fieldset.U.lat
@@ -303,6 +309,11 @@ if __name__ == "__main__":
     SV = Field('SV', np.array(mu_z), lon=0, lat=0, depth=depths, mesh='spherical')
     fieldset.add_field(KV, 'KV')
     fieldset.add_field(SV, 'SV')
+    
+    print(type(rpl))
+    print(type(rhopl))
+    fieldset.add_constant('rpl',rpl)
+    fieldset.add_constant('rhopl',rhopl)
 
     """ Defining the particle set """
 
@@ -325,7 +336,7 @@ if __name__ == "__main__":
 
     kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
 
-    outfile = '/home/dlobelle/Kooi_data/data_output/rho_'+str(int(rho_pl))+'kgm-3/res_'+res+'/'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+    outfile = '/home/dlobelle/Kooi_data/data_output/rho_'+str(int(fieldset.rhopl))+'kgm-3/res_'+res+'/'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_rho'+str(int(fieldset.rhopl))+'_r'+ str(fieldset.rpl)+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
     pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
