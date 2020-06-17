@@ -172,8 +172,8 @@ def Profiles(particle, fieldset, time):
     particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
     particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
     particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
-    particle.rho_pl = fieldset.rhopl[time,particle.depth,particle.lat,particle.lon]
-    particle.rpl = fieldset.rpl[time,particle.depth,particle.lat,particle.lon]
+    particle.rho_pl = fieldset.rho_pl[time,particle.depth,particle.lat,particle.lon]
+    particle.r_pl = fieldset.r_pl[time,particle.depth,particle.lat,particle.lon]
     
 """ Defining the particle class """
 
@@ -190,8 +190,8 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
     sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
     a = Variable('a',dtype=np.float32,to_write=False)
-    rho_pl = Variable('rhopl',dtype=np.float32,to_write=False)
-    r_pl = Variable('rpl',dtype=np.float32,to_write=False)
+    rho_pl = Variable('rho_pl',dtype=np.float32,to_write=False)
+    r_pl = Variable('r_pl',dtype=np.float32,to_write=False)
     vs = Variable('vs',dtype=np.float32,to_write=True)    
 
     
@@ -203,17 +203,17 @@ if __name__ == "__main__":
                    help='start year for the run')
     p.add_argument('-loc', choices = ('global','eq_global','south_global','north_global','SAtl'), action = "store", dest = "loc",
                    help ='location where particles released')
-    p.add_argument('-rpl', choices = ('1e-02', '1e-05', '1e-07'), action = "store", dest = "rpl",
+    p.add_argument('-r_pl', choices = ('1e-02', '1e-05', '1e-07'), action = "store", dest = "r_pl",
                    help ='radius or size of plastic')
-    p.add_argument('-rhopl', choices = ('840', '920', '940'), action = "store", dest = "rhopl",
+    p.add_argument('-rho_pl', choices = ('840', '920', '940'), action = "store", dest = "rho_pl",
                    help ='density of plastic')
                    
     args = p.parse_args()
     mon = args.mon
     yr = args.yr
     loc = args.loc
-    rpl = args.rpl
-    rhopl = args.rhopl   
+    r_pl = args.r_pl
+    rho_pl = args.rho_pl   
     
     """ Load particle release locations from plot_NEMO_landmask.ipynb """
     res = '10x10' #
@@ -310,10 +310,10 @@ if __name__ == "__main__":
     fieldset.add_field(KV, 'KV')
     fieldset.add_field(SV, 'SV')
     
-    print(type(rpl))
-    print(type(rhopl))
-    fieldset.add_constant('rpl',rpl)
-    fieldset.add_constant('rhopl',rhopl)
+    print(type(r_pl))
+    print(type(rho_pl))
+    fieldset.add_constant('r_pl',r_pl)
+    fieldset.add_constant('rho_pl',rho_pl)
 
     """ Defining the particle set """
 
@@ -336,7 +336,7 @@ if __name__ == "__main__":
 
     kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
 
-    outfile = '/home/dlobelle/Kooi_data/data_output/rho_'+str(int(fieldset.rhopl))+'kgm-3/res_'+res+'/'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_rho'+str(int(fieldset.rhopl))+'_r'+ str(fieldset.rpl)+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+    outfile = '/home/dlobelle/Kooi_data/data_output/rho_'+str(int(fieldset.rho_pl))+'kgm-3/res_'+res+'/'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_rho'+str(int(fieldset.rho_pl))+'_r'+ str(fieldset.r_pl)+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
     pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
