@@ -24,7 +24,7 @@ from argparse import ArgumentParser
 warnings.filterwarnings("ignore")
 
 # load particle release locations from plot_NEMO_landmask.ipynb
-loc = 'south_global' #SAtl global
+loc = 'north_global' #global
 res = '2x2'
 with open('/home/dlobelle/Kooi_data/data_input/mask_'+loc+'_NEMO_'+res+'_lat_lon.pickle', 'rb') as f:  #
     lat_release,lon_release = pickle.load(f)
@@ -227,15 +227,15 @@ if __name__ == "__main__":
     dirread_mesh = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/domain/'  
 
     if mon =='12':
-        yr2 = str(int(yr)+1)
-        ufiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05U.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05U.nc')))
-        vfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05V.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05V.nc')))
-        wfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05W.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05W.nc')))
-        pfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+mon+'*d05P.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05P.nc')))
-        ppfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+mon+'*d05D.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05D.nc')))
-        tsfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr+mon+'*d05T.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05T.nc')))
+        yr0 = str(int(yr)-1)
+        ufiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr0+'1*d05U.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05U.nc')))
+        vfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr0+'1*d05V.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05V.nc')))
+        wfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr0+'1*d05W.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05W.nc')))
+        pfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr0+'1*d05P.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+'*d05P.nc')))
+        ppfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr0+'1*d05D.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+'*d05D.nc')))
+        tsfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr0+'1*d05T.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05T.nc')))
     else:
-        yr2=yr
+        yr0 = yr
         ufiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05U.nc')) 
         vfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05V.nc')) 
         wfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05W.nc')) 
@@ -244,7 +244,6 @@ if __name__ == "__main__":
         tsfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05T.nc')) 
         
     mesh_mask = dirread_mesh+'coordinates.nc'
-    bathy_mask = dirread_mesh+'bathymetry_ORCA12_V3.3.nc'
 
     filenames = {'U': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': ufiles}, #'depth': wfiles,
                  'V': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': vfiles},
@@ -276,7 +275,6 @@ if __name__ == "__main__":
                   'cons_temperature': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
                   'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'}}
 
-    chs = {'time_counter': 1, 'depthu': 25, 'depthv': 25, 'depthw': 25, 'deptht': 25, 'y': len(lat_release), 'x': len(lon_release)}
     #chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 100, 'x': 100} # for Parcels 2.1.5, can now define chunksize instead of indices in fieldset
     
     initialgrid_mask = dirread+'ORCA0083-N06_20070105d05U.nc'
@@ -285,12 +283,13 @@ if __name__ == "__main__":
     latvals = Lat[:]; lonvals = Lon[:] # extract lat/lon values to numpy arrays
                                                                                                
     iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat-5, minlon)
-    iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat+5, maxlon+1)
+    iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat+5, maxlon)
 
-    indices = {'lon': range(ix_min, ix_max), 'lat': range(iy_min, iy_max)}  # 'depth': range(0, 2000)
+    indices = {'lat': range(iy_min, iy_max)}  # 'depth': range(0, 2000) 'lon': range(ix_min, ix_max), 
 
+    chs = {'time_counter': 1, 'depthu': 25, 'depthv': 25, 'depthw': 25, 'deptht': 25, 'y': 1000, 'x': len(lonvals[0])}
+        
     fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs, indices = indices) #chs) #field_chunksize = False , allow_time_extrapolation=True or False
-
 
     lons = fieldset.U.lon
     lats = fieldset.U.lat
@@ -311,7 +310,7 @@ if __name__ == "__main__":
                                  pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
                                  lon= lon_release, #-160.,  # a vector of release longitudes 
                                  lat= lat_release, #36., 
-                                 time = np.datetime64('%s-%s-01' % (yr, mon)),
+                                 time = np.datetime64('%s-%s-01' % (yr0, mon)),
                                  depth = z_release) #[1.]
 
     """ Kernal + Execution"""
@@ -326,7 +325,7 @@ if __name__ == "__main__":
 
     kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
 
-    outfile = '/home/dlobelle/Kooi_data/data_output/rho_'+str(int(rho_pl))+'kgm-3/res_'+res+'/'+loc+'_'+s+'_'+yr2+'_3D_grid'+res+'_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+    outfile = '/home/dlobelle/Kooi_data/data_output/rho_'+str(int(rho_pl))+'kgm-3/res_'+res+'/'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
     pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
