@@ -24,7 +24,7 @@ from argparse import ArgumentParser
 warnings.filterwarnings("ignore")
 
 #------ Choose ------:
-simdays = 1 #90 #10
+simdays = 90 #10
 secsdt = 60 
 hrsoutdt = 12
 
@@ -35,9 +35,9 @@ def Kooi(particle,fieldset,time):
     Kernel to compute the vertical velocity (Vs) of particles due to changes in ambient algal concentrations, growth and death of attached algae based on Kooi et al. 2017 model 
     """
     #------ CHOOSE density and size of particles -----
-    rho_pl = particle.rho_pl  # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-    print(rho_pl)
-    r_pl = particle.r_pl #1e-05    # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
+    #rho_pl = fieldset.rhopl  # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
+    #print(rho_pl)
+    #r_pl = fieldset.rpl #1e-05    # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
     
     #------ Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
     min_N2cell = 2656.0e-09 #[mgN cell-1] (from Menden-Deuer and Lessard 2000)
@@ -85,17 +85,17 @@ def Kooi(particle,fieldset,time):
     gamma = 1.728E5/86400.      # shear [d-1], now [s-1]
     
     #------ Volumes -----
-    v_pl = (4./3.)*math.pi*r_pl**3.             # volume of plastic [m3]
-    theta_pl = 4.*math.pi*r_pl**2.              # surface area of plastic particle [m2]
+    v_pl = (4./3.)*math.pi*fieldset.r_pl**3.             # volume of plastic [m3]
+    theta_pl = 4.*math.pi*fieldset.r_pl**2.              # surface area of plastic particle [m2]
     r_a = ((3./4.)*(v_a/math.pi))**(1./3.)      # radius of algae [m]
     
     v_bf = (v_a*a)*theta_pl                           # volume of biofilm [m3]
     v_tot = v_bf + v_pl                               # volume of total [m3]
-    t_bf = ((v_tot*(3./(4.*math.pi)))**(1./3.))-r_pl  # biofilm thickness [m] 
+    t_bf = ((v_tot*(3./(4.*math.pi)))**(1./3.))-fieldset.r_pl  # biofilm thickness [m] 
     
     #------ Diffusivity -----
-    r_tot = r_pl + t_bf                               # total radius [m]
-    rho_tot = (r_pl**3. * rho_pl + ((r_pl + t_bf)**3. - r_pl**3.)*rho_bf)/(r_pl + t_bf)**3. # total density [kg m-3]
+    r_tot = fieldset.r_pl + t_bf                               # total radius [m]
+    rho_tot = (fieldset.r_pl**3. * fieldset.rho_pl + ((fieldset.r_pl + t_bf)**3. - fieldset.r_pl**3.)*rho_bf)/(fieldset.r_pl + t_bf)**3. # total density [kg m-3]
     theta_tot = 4.*math.pi*r_tot**2.                          # surface area of total [m2]
     d_pl = k * (t + 273.16)/(6. * math.pi * sw_visc * r_tot)  # diffusivity of plastic particle [m2 s-1]
     d_a = k * (t + 273.16)/(6. * math.pi * sw_visc * r_a)     # diffusivity of algal cells [m2 s-1] 
@@ -158,10 +158,6 @@ def periodicBC(particle, fieldset, time):
         particle.lon += 360.
     elif particle.lon >= 360.:
         particle.lon -= 360.
-    #if particle.lon > 180:
-    #    particle.lon -= 360
-    #if particle.lon < -180:
-    #    particle.lon += 360
         
 def Profiles(particle, fieldset, time):  
     particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
@@ -172,8 +168,6 @@ def Profiles(particle, fieldset, time):
     particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
     particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
     particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
-    particle.rho_pl = fieldset.rho_pl#[time,particle.depth,particle.lat,particle.lon]
-    particle.r_pl = fieldset.r_pl#[time,particle.depth,particle.lat,particle.lon]
     
 """ Defining the particle class """
 
@@ -190,8 +184,6 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
     sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
     a = Variable('a',dtype=np.float32,to_write=False)
-    #rho_pl = Variable('rho_pl',dtype=np.float32,to_write=False)
-    #r_pl = Variable('r_pl',dtype=np.float32,to_write=False)
     vs = Variable('vs',dtype=np.float32,to_write=True)    
 
     
@@ -216,8 +208,8 @@ if __name__ == "__main__":
     rhopl = np.float32(args.rhopl)
     
     """ Load particle release locations from plot_NEMO_landmask.ipynb """
-    res = '10x10' #
-    with open('/home/dlobelle/Kooi_data/data_input/mask_'+loc+'_NEMO_'+res+'_lat_lon.pickle', 'rb') as f:  #
+    res = '2x2' 
+    with open('/home/dlobelle/Kooi_data/data_input/mask_'+loc+'_NEMO_'+res+'_lat_lon.pickle', 'rb') as f:  
         lat_release,lon_release = pickle.load(f)
 
     z_release = np.tile(1,len(lat_release))
@@ -310,14 +302,10 @@ if __name__ == "__main__":
     fieldset.add_field(KV, 'KV')
     fieldset.add_field(SV, 'SV')
     
-    print(type(rpl))
-    print(type(rhopl))
     fieldset.add_constant('r_pl',rpl)
     fieldset.add_constant('rho_pl',rhopl)
-    
-    print(fieldset.rho_pl)
-    print(fieldset.r_pl)
 
+    
     """ Defining the particle set """
 
     pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
