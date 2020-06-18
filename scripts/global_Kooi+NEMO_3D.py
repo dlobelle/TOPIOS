@@ -172,8 +172,8 @@ def Profiles(particle, fieldset, time):
     particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
     particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
     particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
-    particle.rho_pl = fieldset.rho_pl[time,particle.depth,particle.lat,particle.lon]
-    particle.r_pl = fieldset.r_pl[time,particle.depth,particle.lat,particle.lon]
+    particle.rho_pl = fieldset.rho_pl#[time,particle.depth,particle.lat,particle.lon]
+    particle.r_pl = fieldset.r_pl#[time,particle.depth,particle.lat,particle.lon]
     
 """ Defining the particle class """
 
@@ -190,8 +190,8 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
     sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
     a = Variable('a',dtype=np.float32,to_write=False)
-    rho_pl = Variable('rho_pl',dtype=np.float32,to_write=False)
-    r_pl = Variable('r_pl',dtype=np.float32,to_write=False)
+    #rho_pl = Variable('rho_pl',dtype=np.float32,to_write=False)
+    #r_pl = Variable('r_pl',dtype=np.float32,to_write=False)
     vs = Variable('vs',dtype=np.float32,to_write=True)    
 
     
@@ -203,17 +203,17 @@ if __name__ == "__main__":
                    help='start year for the run')
     p.add_argument('-loc', choices = ('global','eq_global','south_global','north_global','SAtl'), action = "store", dest = "loc",
                    help ='location where particles released')
-    p.add_argument('-r_pl', choices = ('1e-02', '1e-05', '1e-07'), action = "store", dest = "r_pl",
+    p.add_argument('-r_pl', choices = ('1e-02', '1e-05', '1e-07'), action = "store", dest = "rpl",
                    help ='radius or size of plastic')
-    p.add_argument('-rho_pl', choices = ('840', '920', '940'), action = "store", dest = "rho_pl",
+    p.add_argument('-rho_pl', choices = ('840', '920', '940'), action = "store", dest = "rhopl",
                    help ='density of plastic')
                    
     args = p.parse_args()
     mon = args.mon
     yr = args.yr
     loc = args.loc
-    r_pl = args.r_pl
-    rho_pl = args.rho_pl   
+    rpl = np.float32(args.rpl)
+    rhopl = np.float32(args.rhopl)
     
     """ Load particle release locations from plot_NEMO_landmask.ipynb """
     res = '10x10' #
@@ -310,10 +310,13 @@ if __name__ == "__main__":
     fieldset.add_field(KV, 'KV')
     fieldset.add_field(SV, 'SV')
     
-    print(type(r_pl))
-    print(type(rho_pl))
-    fieldset.add_constant('r_pl',r_pl)
-    fieldset.add_constant('rho_pl',rho_pl)
+    print(type(rpl))
+    print(type(rhopl))
+    fieldset.add_constant('r_pl',rpl)
+    fieldset.add_constant('rho_pl',rhopl)
+    
+    print(fieldset.rho_pl)
+    print(fieldset.r_pl)
 
     """ Defining the particle set """
 
