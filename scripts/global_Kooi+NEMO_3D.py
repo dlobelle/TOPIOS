@@ -327,7 +327,7 @@ if __name__ == "__main__":
 
     kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
 
-    outfile = '/home/dlobelle/Kooi_data/data_output/rho_'+str(int(fieldset.rho_pl))+'kgm-3/res_'+res+'/'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_rho'+str(int(fieldset.rho_pl))+'_r'+ str(fieldset.r_pl)+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+    outfile = '/home/dlobelle/Kooi_data/data_output/rho_'+str(int(fieldset.rho_pl))+'kgm-3/res_'+res+'/r'+ str(fieldset.r_pl)+'/'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_rho'+str(int(fieldset.rho_pl))+'_r'+ str(fieldset.r_pl)+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
     pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
@@ -336,4 +336,5 @@ if __name__ == "__main__":
     pfile.close()
 
     print('Execution finished')
+    
 
