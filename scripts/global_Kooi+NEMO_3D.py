@@ -316,8 +316,8 @@ if __name__ == "__main__":
                                  lat= lat_release, #36., 
                                  time = np.datetime64('%s-%s-01' % (yr0, mon)),
                                  depth = z_release,
-                                 r_pl = r_pls[0],
-                                 rho_pl = rho_pls[0])
+                                 r_pl = r_pls[0] * np.ones(lon_release.size),
+                                 rho_pl = rho_pls[0] * np.ones(lon_release.size))
     
     for r_pl, rho_pl in zip(r_pls[1:], rho_pls[1:]):
         pset.add(ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
@@ -326,8 +326,8 @@ if __name__ == "__main__":
                                  lat= lat_release, #36., 
                                  time = np.datetime64('%s-%s-01' % (yr0, mon)),
                                  depth = z_release,
-                                 r_pl = r_pl,
-                                 rho_pl = rho_pl))
+                                 r_pl = r_pl * np.ones(lon_release.size),
+                                 rho_pl = rho_pl * np.ones(lon_release.size)))
 
 
     """ Kernal + Execution"""
