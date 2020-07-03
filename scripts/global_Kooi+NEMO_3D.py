@@ -35,9 +35,9 @@ def Kooi(particle,fieldset,time):
     Kernel to compute the vertical velocity (Vs) of particles due to changes in ambient algal concentrations, growth and death of attached algae based on Kooi et al. 2017 model 
     """
     #------ CHOOSE density and size of particles -----
-    #rho_pl = fieldset.rhopl  # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
+    #rho_pl = particle.rhopl  # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
     #print(rho_pl)
-    #r_pl = fieldset.rpl #1e-05    # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
+    #r_pl = particle.rpl #1e-05    # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
     
     #------ Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
     min_N2cell = 2656.0e-09 #[mgN cell-1] (from Menden-Deuer and Lessard 2000)
@@ -85,17 +85,17 @@ def Kooi(particle,fieldset,time):
     gamma = 1.728E5/86400.      # shear [d-1], now [s-1]
     
     #------ Volumes -----
-    v_pl = (4./3.)*math.pi*fieldset.r_pl**3.             # volume of plastic [m3]
-    theta_pl = 4.*math.pi*fieldset.r_pl**2.              # surface area of plastic particle [m2]
+    v_pl = (4./3.)*math.pi*particle.r_pl**3.             # volume of plastic [m3]
+    theta_pl = 4.*math.pi*particle.r_pl**2.              # surface area of plastic particle [m2]
     r_a = ((3./4.)*(v_a/math.pi))**(1./3.)      # radius of algae [m]
     
     v_bf = (v_a*a)*theta_pl                           # volume of biofilm [m3]
     v_tot = v_bf + v_pl                               # volume of total [m3]
-    t_bf = ((v_tot*(3./(4.*math.pi)))**(1./3.))-fieldset.r_pl  # biofilm thickness [m] 
+    t_bf = ((v_tot*(3./(4.*math.pi)))**(1./3.))-particle.r_pl  # biofilm thickness [m] 
     
     #------ Diffusivity -----
-    r_tot = fieldset.r_pl + t_bf                               # total radius [m]
-    rho_tot = (fieldset.r_pl**3. * fieldset.rho_pl + ((fieldset.r_pl + t_bf)**3. - fieldset.r_pl**3.)*rho_bf)/(fieldset.r_pl + t_bf)**3. # total density [kg m-3]
+    r_tot = particle.r_pl + t_bf                               # total radius [m]
+    rho_tot = (particle.r_pl**3. * particle.rho_pl + ((particle.r_pl + t_bf)**3. - particle.r_pl**3.)*rho_bf)/(particle.r_pl + t_bf)**3. # total density [kg m-3]
     theta_tot = 4.*math.pi*r_tot**2.                          # surface area of total [m2]
     d_pl = k * (t + 273.16)/(6. * math.pi * sw_visc * r_tot)  # diffusivity of plastic particle [m2 s-1]
     d_a = k * (t + 273.16)/(6. * math.pi * sw_visc * r_a)     # diffusivity of algal cells [m2 s-1] 
@@ -185,6 +185,8 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
     a = Variable('a',dtype=np.float32,to_write=False)
     vs = Variable('vs',dtype=np.float32,to_write=True)    
+    r_pl = Variable('r_pl',dtype=np.float32,to_write='once')   
+    rho_pl = Variable('rho_pl',dtype=np.float32,to_write='once')   
 
     
 if __name__ == "__main__":     
@@ -302,18 +304,31 @@ if __name__ == "__main__":
     fieldset.add_field(KV, 'KV')
     fieldset.add_field(SV, 'SV')
     
-    fieldset.add_constant('r_pl',rpl)
-    fieldset.add_constant('rho_pl',rhopl)
-
     
     """ Defining the particle set """
+    
+    rho_pls = [920, 920, 920, 940, 940, 940, 960, 960, 960]  # add/remove here if more needed
+    r_pls = [1e-7, 1e-5, 1e-2, 1e-7, 1e-5, 1e-2, 1e-7, 1e-5, 1e-2]  # add/remove here if more needed
 
     pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
                                  pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
                                  lon= lon_release, #-160.,  # a vector of release longitudes 
                                  lat= lat_release, #36., 
                                  time = np.datetime64('%s-%s-01' % (yr0, mon)),
-                                 depth = z_release) #[1.]
+                                 depth = z_release,
+                                 r_pl = r_pls[0] * np.ones(lon_release.size),
+                                 rho_pl = rho_pls[0] * np.ones(lon_release.size))
+    
+    for r_pl, rho_pl in zip(r_pls[1:], rho_pls[1:]):
+        pset.add(ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
+                                 pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
+                                 lon= lon_release, #-160.,  # a vector of release longitudes 
+                                 lat= lat_release, #36., 
+                                 time = np.datetime64('%s-%s-01' % (yr0, mon)),
+                                 depth = z_release,
+                                 r_pl = r_pl * np.ones(lon_release.size),
+                                 rho_pl = rho_pl * np.ones(lon_release.size)))
+
 
     """ Kernal + Execution"""
     if mon=='12':
@@ -327,7 +342,7 @@ if __name__ == "__main__":
 
     kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
 
-    outfile = '/home/dlobelle/Kooi_data/data_output/rho_'+str(int(fieldset.rho_pl))+'kgm-3/res_'+res+'/'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_rho'+str(int(fieldset.rho_pl))+'_r'+ str(fieldset.r_pl)+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+    outfile = '/home/dlobelle/Kooi_data/data_output/allrho/res_'+res+'/allr/'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_allrho_allr_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
     pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
@@ -336,4 +351,5 @@ if __name__ == "__main__":
     pfile.close()
 
     print('Execution finished')
+    
 
