@@ -29,20 +29,25 @@ minlon = -175
 maxlon = -145 
 
 #------ Release particles on a 10x10 deg grid in middle of the 30x30 fieldset grid and 1m depth ------
-lat_release0 = np.tile(np.linspace(30,39,10),[10,1]) 
+lat_release0 = np.tile(np.linspace(minlat+10,maxlat-11,10),[10,1]) 
 lat_release = lat_release0.T 
-lon_release = np.tile(np.linspace(-165,-156,10),[10,1]) 
+lon_release = np.tile(np.linspace(minlon+10,maxlon-11,10),[10,1]) 
 z_release = np.tile(1,[10,10])
 time0 = 0
+# lat_release0 = np.tile(np.linspace(30,39,10),[10,1]) 
+# lat_release = lat_release0.T 
+# lon_release = np.tile(np.linspace(-165,-156,10),[10,1]) 
+# z_release = np.tile(1,[10,10])
+# time0 = 0
 
 #------ Choose ------:
-simdays = 30
+simdays = 10
 secsdt = 30
 hrsoutdt = 5
 
 #--------- CHOOSE density and size of particles: NOTE- MUST ALSO MANUALLY CHANGE IT IN THE KOOI KERNAL BELOW -----
 rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1 in Kooi: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-r_pl = "1e-04"                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
+r_pl = 1e-04 #0.0001          # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
 
 """functions and kernels"""
 
@@ -53,6 +58,9 @@ def Kooi(particle,fieldset,time):
     #------ CHOOSE density and size of particles -----
     rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
     r_pl = 1e-04                  # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
+    
+    rho_pl = particle.rho_pl
+    r_pl = particle.r_pl
     
     #------ Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
     min_N2cell = 2656.0e-09 #[mgN cell-1] (from Menden-Deuer and Lessard 2000)
@@ -181,6 +189,8 @@ def Profiles(particle, fieldset, time):
     particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
     particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
     particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
+    particle.r_pl = fieldset.r_pl[time,particle.depth,particle.lat,particle.lon]
+    particle.rho_pl = fieldset.rho_pl[time,particle.depth,particle.lat,particle.lon]
     
 """ Defining the particle class """
 
@@ -200,7 +210,9 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
     sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
     a = Variable('a',dtype=np.float32,to_write=False)
-    vs = Variable('vs',dtype=np.float32,to_write=True)    
+    vs = Variable('vs',dtype=np.float32,to_write=True)   
+    r_pl = Variable('r_pl',dtype=np.float32,to_write=False)
+    rho_pl = Variable('rho_pl',dtype=np.float32,to_write=False) 
     
 """ Defining the fieldset""" 
 
@@ -254,7 +266,7 @@ dimensions = {'U': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': '
 
 chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 200, 'x': 200} # for Parcels 2.1.5, can now define chunksize instead of indices in fieldset
 
-fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs) # , indices=indices, allow_time_extrapolation=True or False
+fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=False) #chs) # , indices=indices, allow_time_extrapolation=True or False
 
 depths = fieldset.U.depth
 
@@ -272,6 +284,10 @@ SV = Field('SV',sv_or,lon=v_lon,lat=v_lat,depth = depths, mesh='spherical')#,tra
 fieldset.add_field(KV, 'KV')
 fieldset.add_field(SV, 'SV')
 
+# - Testing to see if this prevents having to define it twice (at top and within Kooi kernel)
+#fieldset.add_constant('rho_pl', rho_pl)
+#fieldset.add_constant('r_pl', r_pl)
+
 """ Defining the particle set """
 
 pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
@@ -285,7 +301,7 @@ pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which th
 
 kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) 
 
-outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/Kooi+NEMO_3D_noEuphZCondandPushBack_grid10by10_rho'+str(int(rho_pl))+'_r'+ r_pl+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+outfile = '/home/dlobelle/Kooi_data/data_output/tests/rho_'+str(int(rho_pl))+'kgm-3/Kooi+NEMO_3D_testAddConstant_grid10by10_rho'+str(int(rho_pl))+'_r'+ str(int(r_pl))+'_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
