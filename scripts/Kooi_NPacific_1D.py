@@ -24,79 +24,37 @@ import math as math
 lon = np.array([-161,-159]) 
 lat = np.array([35,37]) 
 simdays =  150
-simhours = 1
+secsdt = 60 
+
+#simhours = 1
 time0 = 0
 total_hours = 24*simdays
-dt = 60*60 # seconds in an hour (for the pickle profiles)
-total_secs = dt*24.*simdays - dt
-dt_secs = total_secs/dt
+secsoutdt = 60*60 # seconds in an hour (MUST be in hours due to algal pickle profiles being hours)
+total_secs = secsoutdt*24.*simdays - secsoutdt
+dt_secs = total_secs/secsoutdt
 
+#------ CHOOSE -----
+rho_pl = "920"                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
+r_pl = "1e-04"                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
 
-#dt = 60 #*60 [mins]
-#total_mins = 24*dt*simdays
-#times = np.linspace(time0,simdays,total_mins)
-
-with open('/home/dlobelle/data/Kooi_input/profiles.pickle', 'rb') as f:
+with open('/home/dlobelle/Kooi_data/data_input/profiles.pickle', 'rb') as f:
     depth,T_z,S_z,rho_z,upsilon_z,mu_z = pickle.load(f)
 
 depth = np.array(depth)
 
-with open('/home/dlobelle/data/Kooi_input/profiles_t.pickle', 'rb') as p:
+with open('/home/dlobelle/Kooi_data/data_input/profiles_t.pickle', 'rb') as p:
     depth,time,A_A_t,mu_A_t = pickle.load(p)
 
 time = np.linspace(time0,total_secs,dt_secs+1)
 
-""" Defining the particle class """
-
-class plastic_particle(JITParticle): # initals
-    u = Variable('u', dtype=np.float32,to_write=False)
-    v = Variable('v', dtype=np.float32,to_write=False)
-    #age = Variable('age', dtype=np.float32,to_write=True)
-    temp = Variable('temp',dtype=np.float32,to_write=True)
-    rho_sw = Variable('rho_sw',dtype=np.float32,to_write=False)
-    kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
-    sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)
-    aa = Variable('aa',dtype=np.float32,to_write=True)
-    mu_aa = Variable('mu_aa',dtype=np.float32,to_write=False)
-    a = Variable('a',dtype=np.float32,to_write=True)
-    vs = Variable('vs',dtype=np.float32,to_write=True)
-    rho_tot = Variable('rho_tot',dtype=np.float32,to_write=True)
-    w = Variable('w',dtype=np.float32,to_write=True)
-    
-    #Vs = Variable('Vs',dtype=np.float32,to_write=True)
-    #z = Variable('z',dtype=np.float32,to_write=True)
-    
+  
 """ General functions and kernals"""
- 
-def DeleteParticle(particle, fieldset, time):
-    """Kernel for deleting particles if they are out of bounds."""
-    print('particle is deleted') 
-    #print(particle.lon, particle.lat, particle.depth)
-    particle.delete()
-    
-def Sink(particle, fieldset, time):
-    """Kernal for sinking (to be changed with Kooi equation later)"""
-    #print(particle.depth)
-#    particle.depth = 30#particle.depth + fieldset.sinkspeed * particle.dt
-#    w1 = fieldset.W[time, particle.depth, particle.lat, particle.lon]  
-    sp = 10./86400. #The sinkspeed m/day (CAN CHANGE THIS LATER- in Kooi et al. 2017 for particle of 0.1mm = 100 m d-1)
-    particle.depth += sp * particle.dt #(sp/(24*60*60)) * particle.dt # m/s : 1e-3
-    
-#     sp = 10 #The sinkspeed m/day (CAN CHANGE THIS LATER- in Kooi et al. 2017 for particle of 0.1mm = 100 m d-1)
-#     particle.depth += (sp/86400) * particle.dt #(sp/(24*60*60)) * particle.dt # m/s : 1e-3
-    
-    #z = particle.depth
-    #print(z)
-    
-def Profiles(particle, fieldset, time):  
-    particle.temp = fieldset.T[time, particle.depth,particle.lat,particle.lon]  
-    particle.rho_sw = fieldset.D[time,particle.depth,particle.lat,particle.lon] 
-    particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
-    particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
-    particle.aa = fieldset.AA[time,particle.depth,particle.lat,particle.lon]
-    particle.mu_aa = fieldset.AAmu[time,particle.depth,particle.lat,particle.lon]
-    
+
 def Kooi(particle,fieldset,time):  
+    #------ CHOOSE -----
+    rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
+    r_pl = 1e-04                # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
+    
     z = particle.depth           # [m]
     t = particle.temp            # [oC]
     sw_visc = particle.sw_visc   # [kg m-1 s-1]
@@ -108,9 +66,6 @@ def Kooi(particle,fieldset,time):
     vs = particle.vs #10/(24*60*60) #particle.depth #particle.vs
 
     #print(vs)
-    #------ CHOOSE -----
-    rho_pl = 920.                 # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-    r_pl = 10.**(-4)               # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7
 
     #------ Constants and algal properties -----
     g = 7.32e10/(86400.**2.)    # gravitational acceleration (m d-2), now [s-2]
@@ -171,11 +126,67 @@ def Kooi(particle,fieldset,time):
         a_del_rho = delta_rho*-1.
         vs = -1.*(g * kin_visc * w * a_del_rho)**(1./3.)  # m s-1
 
-    particle.depth += vs * particle.dt #particle.vs
+#     particle.depth += vs * particle.dt #particle.vs
+#     particle.vs = vs
+#     z = particle.depth
+#     dt = particle.dt
+  
+    z0 = z + vs * particle.dt
+    if z0 <0.6: # NEMO's 'surface depth'
+        particle.depth = 0.6
+    else:          
+        particle.depth += vs * particle.dt 
+
     particle.vs = vs
-    z = particle.depth
-    dt = particle.dt
     
+def DeleteParticle(particle, fieldset, time):
+    """Kernel for deleting particles if they are out of bounds."""
+    print('particle is deleted') 
+    #print(particle.lon, particle.lat, particle.depth)
+    particle.delete()
+    
+def Sink(particle, fieldset, time):
+    """Kernal for sinking (to be changed with Kooi equation later)"""
+    #print(particle.depth)
+#    particle.depth = 30#particle.depth + fieldset.sinkspeed * particle.dt
+#    w1 = fieldset.W[time, particle.depth, particle.lat, particle.lon]  
+    sp = 10./86400. #The sinkspeed m/day (CAN CHANGE THIS LATER- in Kooi et al. 2017 for particle of 0.1mm = 100 m d-1)
+    particle.depth += sp * particle.dt #(sp/(24*60*60)) * particle.dt # m/s : 1e-3
+    
+#     sp = 10 #The sinkspeed m/day (CAN CHANGE THIS LATER- in Kooi et al. 2017 for particle of 0.1mm = 100 m d-1)
+#     particle.depth += (sp/86400) * particle.dt #(sp/(24*60*60)) * particle.dt # m/s : 1e-3
+    
+    #z = particle.depth
+    #print(z)
+    
+def Profiles(particle, fieldset, time):  
+    particle.temp = fieldset.T[time, particle.depth,particle.lat,particle.lon]  
+    particle.rho_sw = fieldset.D[time,particle.depth,particle.lat,particle.lon] 
+    particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
+    particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
+    particle.aa = fieldset.AA[time,particle.depth,particle.lat,particle.lon]
+    particle.mu_aa = fieldset.AAmu[time,particle.depth,particle.lat,particle.lon]
+    
+""" Defining the particle class """
+
+class plastic_particle(JITParticle): # initals
+    u = Variable('u', dtype=np.float32,to_write=False)
+    v = Variable('v', dtype=np.float32,to_write=False)
+    #age = Variable('age', dtype=np.float32,to_write=True)
+    temp = Variable('temp',dtype=np.float32,to_write=True)
+    rho_sw = Variable('rho_sw',dtype=np.float32,to_write=False)
+    kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
+    sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)
+    aa = Variable('aa',dtype=np.float32,to_write=True)
+    mu_aa = Variable('mu_aa',dtype=np.float32,to_write=False)
+    a = Variable('a',dtype=np.float32,to_write=True)
+    vs = Variable('vs',dtype=np.float32,to_write=True)
+    rho_tot = Variable('rho_tot',dtype=np.float32,to_write=True)
+    w = Variable('w',dtype=np.float32,to_write=True)
+    
+    #Vs = Variable('Vs',dtype=np.float32,to_write=True)
+    #z = Variable('z',dtype=np.float32,to_write=True)
+       
     
 """ Defining the fieldset"""
 
@@ -226,14 +237,17 @@ pset = ParticleSet.from_list(fieldset=fieldset, # the fields on which the partic
 
 kernels = pset.Kernel(AdvectionRK4) +  pset.Kernel(Profiles)  + pset.Kernel(Kooi) #+ pset.Kernel(Kooi_eq) #+ pset.Kernel(settling)  
 
-dirwrite = '/home/dlobelle/data/Kooi_output/'
-outfile = dirwrite + 'run1_150d_rho920_rpl10-4_v3.nc'
+dirwrite = '/home/dlobelle/Kooi_data/data_output/1D_results/'
+#outfile = dirwrite + 'checkrun1_110d_rho920_rpl10-03_1secdt.nc' 
+outfile = dirwrite+'Kooionly_1D_'+str(round(simdays,2))+'d_rho'+rho_pl+'_rpl'+r_pl+'_'+str(secsdt)+'dtsecs_'+str(round(secsoutdt/3600.,2))+'hrsoutdt.nc' 
 
 
-pfile= ParticleFile(outfile, pset, outputdt=delta(minutes = 30)) #120
+pfile= ParticleFile(outfile, pset, outputdt=delta(seconds = secsoutdt)) #minutes = 30)) #120
 
-pset.execute(kernels, runtime=delta(days=simdays), dt=delta(minutes=0.1), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}) # minutes=0.1
+pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}) # minutes=0.1
 pfile.close()
+
+
 
 print('Execution finished')
 
