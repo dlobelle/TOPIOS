@@ -23,13 +23,13 @@ import math as math
 from argparse import ArgumentParser
 warnings.filterwarnings("ignore")
 
-#------ Fieldset grid is 30x30 deg in North Pacific ------
+#------ Fieldset grid is 50x50 deg in North Pacific ------
 minlat = 10 
 maxlat = 60 
 minlon = -170 #75 
 maxlon = -120 #45 
 
-#------ Release particles on a 10x10 deg grid in middle of the 30x30 fieldset grid and 1m depth ------
+#------ Release particles on a 10x10 deg grid in middle of the 50x50 fieldset grid (30:40N and -140:-150 E) and 1m depth, Kooi study location was 20N, -153E ------
 lat_release0 = np.tile(np.linspace(minlat+20,maxlat-22,5),[5,1]) 
 lat_release = lat_release0.T 
 lon_release = np.tile(np.linspace(minlon+20,maxlon-22,5),[5,1]) 
@@ -238,15 +238,16 @@ dirread_mesh = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/d
     #if mon =='12':
 res = '2x2' 
 mon = '01'
-yr1 = '2004'
+yr1 = '2002'
 yr2 = str(int(yr1)+1)
 yr3 = str(int(yr1)+2)
 ufiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05U.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05U.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05U.nc')))
-vfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05V.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05V.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05U.nc')))
-wfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05W.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05W.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05U.nc')))
-pfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05P.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05P.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05U.nc')))
-ppfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05D.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05D.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05U.nc')))
-tsfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05T.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05T.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05U.nc')))
+vfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05V.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05V.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05V.nc')))
+wfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05W.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05W.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05W.nc')))
+pfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05P.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05P.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05P.nc')))
+ppfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05D.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05D.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05D.nc')))
+tsfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05T.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05T.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05T.nc')))
+
 #     else:
 #         yr0 = yr
 #         ufiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05U.nc')) 
