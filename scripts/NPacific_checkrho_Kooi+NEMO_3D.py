@@ -26,15 +26,14 @@ warnings.filterwarnings("ignore")
 #------ Fieldset grid is 30x30 deg in North Pacific ------
 minlat = 35 
 maxlat = 65
-minlon = -160# -180 #75 
-maxlon = -130 #45 
+minlon = -160 
+maxlon = -130 
 
-#------ Release particles on a 10x10 deg grid in middle of the 30x30 fieldset grid (20:30N and -140:-150 E) and 1m depth, Kooi study location was 20N, -153E ------
+#------ Release particles on a 10x10 deg grid ------
 lat_release0 = np.tile(np.linspace(45,53,5),[5,1]) 
 lat_release = lat_release0.T 
 lon_release = np.tile(np.linspace(-140,-148,5),[5,1]) 
 z_release = np.tile(1,[5,5])
-#time0 = 0
 
 #------ Choose ------:
 simdays = 20 #10
@@ -47,10 +46,6 @@ def Kooi(particle,fieldset,time):
     """
     Kernel to compute the vertical velocity (Vs) of particles due to changes in ambient algal concentrations, growth and death of attached algae based on Kooi et al. 2017 model 
     """
-    #------ CHOOSE density and size of particles -----
-    #rho_pl = particle.rhopl  # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-    #print(rho_pl)
-    #r_pl = particle.rpl #1e-05    # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
     
     #------ Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
     min_N2cell = 2656.0e-09 #[mgN cell-1] (from Menden-Deuer and Lessard 2000)
@@ -205,7 +200,6 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     r_pl = Variable('r_pl',dtype=np.float32,to_write='once')   
     rho_pl = Variable('rho_pl',dtype=np.float32,to_write='once')   
 
-  
     
 """ Defining the fieldset""" 
 
