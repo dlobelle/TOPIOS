@@ -23,22 +23,45 @@ import math as math
 from argparse import ArgumentParser
 warnings.filterwarnings("ignore")
 
-#------ Fieldset grid is 30x30 deg in North Pacific ------
-minlat = 35 
-maxlat = 65
-minlon = -160 
-maxlon = -130 
+# CHOOSE
+region = 'NAtl_SPG' # 'NPac_SPG' 'NPac_STG'
+sizes = 'allsizes' #1to10mm
+
+#------ Fieldset grid is 20x30 deg in North Pacific ------
+if region == 'NPac_SPG':
+    minlat = 40 
+    maxlat = 60
+    minlon = -160 
+    maxlon = -130
+elif region == 'NPac_STG':
+    minlat = 10 
+    maxlat = 40
+    minlon = -160 
+    maxlon = -130
+elif region == 'NAtl_SPG':
+    minlat = 40 
+    maxlat = 60
+    minlon = -40 
+    maxlon = -10
+     
 
 #------ Release particles on a 10x10 deg grid ------
-lat_release0 = np.tile(np.linspace(45,53,5),[5,1]) 
-lat_release = lat_release0.T 
-lon_release = np.tile(np.linspace(-140,-148,5),[5,1]) 
-z_release = np.tile(1,[5,5])
+if region == 'NPac_SPG':
+    lat_release0 = np.tile(np.linspace(45,53,5),[5,1]) 
+    lon_release = np.tile(np.linspace(-140,-148,5),[5,1])
+elif region == 'NPac_STG':
+    lat_release0 = np.tile(np.linspace(20,28,5),[5,1]) 
+    lon_release = np.tile(np.linspace(-140,-148,5),[5,1])
+elif region == 'NAtl_SPG':
+    lat_release0 = np.tile(np.linspace(45,53,5),[5,1]) 
+    lon_release = np.tile(np.linspace(-20,-28,5),[5,1])
 
+lat_release = lat_release0.T 
+z_release = np.tile(0.6,[5,5])
 #------ Choose ------:
-simdays = 20 #10
-secsdt = 60 
-hrsoutdt = 12
+simdays = 30 #20
+secsdt = 30 #60 
+hrsoutdt = 6 #2
 
 """functions and kernels"""
 
@@ -78,7 +101,7 @@ def Kooi(particle,fieldset,time):
     t = particle.temp            # [oC]
     sw_visc = particle.sw_visc   # [kg m-1 s-1]
     kin_visc = particle.kin_visc # [m2 s-1]
-    rho_sw = particle.density    # [kg m-3]   #rho_sw     
+    rho_sw = particle.density    # [kg m-3]       
     a = particle.a               # [no. m-2 s-1]
     vs = particle.vs             # [m s-1]   
 
@@ -124,26 +147,33 @@ def Kooi(particle,fieldset,time):
 
     dn = 2. * (r_tot)                             # equivalent spherical diameter [m]
     delta_rho = (rho_tot - rho_sw)/rho_sw         # normalised difference in density between total plastic+bf and seawater[-]        
-    d = ((rho_tot - rho_sw) * g * dn**3.)/(rho_sw * kin_visc**2.) # [-]
+    dstar = ((rho_tot - rho_sw) * g * dn**3.)/(rho_sw * kin_visc**2.) # [-]
     
-    if dn > 5e9:
+        
+    if dstar > 5e9:
         w = 1000.
-    elif dn <0.05:
-        w = (d**2.) *1.71E-4
+    elif dstar <0.05:
+        w = (dstar**2.) *1.71E-4
     else:
-        w = 10.**(-3.76715 + (1.92944*math.log10(d)) - (0.09815*math.log10(d)**2.) - (0.00575*math.log10(d)**3.) + (0.00056*math.log10(d)**4.))
+        w = 10.**(-3.76715 + (1.92944*math.log10(dstar)) - (0.09815*math.log10(dstar)**2.) - (0.00575*math.log10(dstar)**3.) + (0.00056*math.log10(dstar)**4.))
     
     #------ Settling of particle -----
-    if z >= 4000.: 
-        vs = 0 
-    elif delta_rho > 0:
+#     if z >= 4000.: 
+#         vs = 0 
+#     elif z<=0.6 and delta_rho < 0:# for rising particles above 0.6 m (negative delta_rho = rho_tot < rho_sw)
+#         vs = 0
+#         particle.depth = 0.6
+    if delta_rho > 0: # sinks 
         vs = (g * kin_visc * w * delta_rho)**(1./3.)
-    else: 
+    else: #rises 
         a_del_rho = delta_rho*-1.
         vs = -1.*(g * kin_visc * w * a_del_rho)**(1./3.)  # m s-1
     
-    z0 = z + vs * particle.dt
-    if z0 <0.6: # NEMO's 'surface depth'
+    particle.vs_init = vs
+    
+    z0 = z + vs * particle.dt 
+    if z0 <=0.6 or z0 >= 4000.: # NEMO's 'surface depth'
+        vs = 0
         particle.depth = 0.6
     else:          
         particle.depth += vs * particle.dt 
@@ -151,6 +181,13 @@ def Kooi(particle,fieldset,time):
     particle.vs = vs
     particle.rho_tot = rho_tot
     particle.r_tot = r_tot
+    particle.dstar = dstar
+    particle.t_bf = t_bf
+    particle.beta_a = beta_a
+    particle.beta_abrown = beta_abrown
+    particle.beta_ashear = beta_ashear
+    particle.beta_aset = beta_aset
+    particle.delta_rho = delta_rho
     
 def DeleteParticle(particle, fieldset, time):
     """Kernel for deleting particles if they are out of bounds."""
@@ -182,11 +219,11 @@ def Profiles(particle, fieldset, time):
 """ Defining the particle class """
 
 class plastic_particle(JITParticle): #ScipyParticle): #
-    u = Variable('u', dtype=np.float32,to_write=False)
-    v = Variable('v', dtype=np.float32,to_write=False)
-    w = Variable('w', dtype=np.float32,to_write=False)
+    u = Variable('u', dtype=np.float32,to_write=True)
+    v = Variable('v', dtype=np.float32,to_write=True)
+    w = Variable('w', dtype=np.float32,to_write=True)
     temp = Variable('temp',dtype=np.float32,to_write=False)
-    density = Variable('density',dtype=np.float32,to_write=False)
+    density = Variable('density',dtype=np.float32,to_write=True)
     tpp3 = Variable('tpp3',dtype=np.float32,to_write=False)
     euph_z = Variable('euph_z',dtype=np.float32,to_write=False)
     d_phy = Variable('d_phy',dtype=np.float32,to_write=False)
@@ -197,6 +234,14 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     vs = Variable('vs',dtype=np.float32,to_write=True) 
     rho_tot = Variable('rho_tot',dtype=np.float32,to_write=True) 
     r_tot = Variable('r_tot',dtype=np.float32,to_write=True)
+    dstar = Variable('dstar',dtype=np.float32,to_write=True)
+    t_bf = Variable('t_bf',dtype=np.float32,to_write=True)
+    beta_a = Variable('beta_a',dtype=np.float32,to_write=True)
+    beta_aset = Variable('beta_aset',dtype=np.float32,to_write=True)
+    beta_ashear = Variable('beta_ashear',dtype=np.float32,to_write=True)
+    beta_abrown = Variable('beta_abrown',dtype=np.float32,to_write=True)
+    delta_rho = Variable('delta_rho',dtype=np.float32,to_write=True)
+    vs_init = Variable('vs_init',dtype=np.float32,to_write=True)
     r_pl = Variable('r_pl',dtype=np.float32,to_write='once')   
     rho_pl = Variable('rho_pl',dtype=np.float32,to_write='once')   
 
@@ -208,15 +253,15 @@ dirread_bgc = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA_BGC/ORCA0083-N00
 dirread_mesh = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/domain/'  
 
 res = '2x2' 
-mon = '01'
+mon = '03'
 yr1 = '2004'
 
-ufiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05U.nc'))
-vfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05V.nc'))
-wfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05W.nc'))
-pfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05P.nc'))
-ppfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05D.nc'))
-tsfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05T.nc'))
+ufiles = sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05U.nc'))
+vfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05V.nc'))
+wfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05W.nc'))
+pfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05P.nc'))
+ppfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05D.nc'))
+tsfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05T.nc'))
 
         
 mesh_mask = dirread_mesh+'coordinates.nc'
@@ -282,9 +327,13 @@ fieldset.add_field(SV, 'SV')
     
     
 """ Defining the particle set """   
+if sizes == '1to10mm':    
+    rho_pls = [920, 920, 920, 920, 920, 920, 920, 920, 920, 920]  # add/remove here if more needed
+    r_pls = [0.001,0.002,0.003,0.004,0.005,0.006,0.007,0.008,0.009,0.010]# add/remove here if more needed 
+elif sizes == 'allsizes':    
+    rho_pls = [920, 920, 920, 920, 920, 920]  # add/remove here if more needed
+    r_pls = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7]# add/remove here if more needed 
     
-rho_pls = [920, 920, 920, 920, 920, 920]  # add/remove here if more needed
-r_pls = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7]  # add/remove here if more needed
 
 pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
                                  pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
@@ -293,7 +342,9 @@ pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which th
                                  time = np.datetime64('%s-%s-05' % (yr1, mon)),
                                  depth = z_release,
                                  r_pl = r_pls[0] * np.ones(np.array(lon_release).size),
-                                 rho_pl = rho_pls[0] * np.ones(np.array(lon_release).size))
+                                 rho_pl = rho_pls[0] * np.ones(np.array(lon_release).size),
+                                 r_tot = r_pls[0] * np.ones(np.array(lon_release).size),
+                                 rho_tot = rho_pls[0] * np.ones(np.array(lon_release).size))
 
 for r_pl, rho_pl in zip(r_pls[1:], rho_pls[1:]):
     pset.add(ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
@@ -303,14 +354,16 @@ for r_pl, rho_pl in zip(r_pls[1:], rho_pls[1:]):
                         time = np.datetime64('%s-%s-05' % (yr1, mon)),
                         depth = z_release,
                         r_pl = r_pl * np.ones(np.array(lon_release).size),
-                        rho_pl = rho_pl * np.ones(np.array(lon_release).size)))
+                        rho_pl = rho_pl * np.ones(np.array(lon_release).size),
+                        r_tot = r_pl * np.ones(np.array(lon_release).size),
+                        rho_tot = rho_pl * np.ones(np.array(lon_release).size)))
 
 
-    """ Kernal + Execution"""
+""" Kernal + Execution"""
 
-kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
+kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) +   
 
-outfile = '/home/dlobelle/Kooi_data/data_output/allrho/res_'+res+'/allr/NPac_checkrho_3D_grid'+res+'_allrho_allr_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+outfile = '/home/dlobelle/Kooi_data/data_output/allrho/res_'+res+'/allr/tests/checkVs0_'+region+'_'+sizes+'_checkrho_3D_grid'+res+'_920kgm-3_'+str(round(simdays,2))+'days_startmon_'+mon+'_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
