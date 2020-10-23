@@ -206,6 +206,21 @@ def periodicBC(particle, fieldset, time):
     elif particle.lon >= 360.:
         particle.lon -= 360.
         
+def kernel_kukulka_mixing(particle, fieldset, time):  
+    """
+    :Kernel that randomly distributes particles along the vertical according to an expovariate distribution.
+    :Parameterization according to Kukulka et al. (2012): The effect of wind mixing on the vertical distribution of buoyant plastic debris
+    :Comment on dimensions: tau needs to be in Pa
+    """
+    stress =  particle.tau #fieldset.tau[particle.time,particle.depth,particle.lat,particle.lon]
+    A0=0.31 * math.pow(stress,1.5)
+    l=particle.vs/A0 #fieldset.wrise/A0
+    d=random.expovariate(l) #Kukulka formula. Used depths of [0 ... 120.] m
+    if d>120.:
+        particle.depth=120.
+    else:
+        particle.depth=d
+        
 def Profiles(particle, fieldset, time):  
     particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
     particle.d_phy= fieldset.d_phy[time, particle.depth,particle.lat,particle.lon]  
@@ -215,13 +230,15 @@ def Profiles(particle, fieldset, time):
     particle.kin_visc = fieldset.KV[time,particle.depth,particle.lat,particle.lon] 
     particle.sw_visc = fieldset.SV[time,particle.depth,particle.lat,particle.lon] 
     particle.w = fieldset.W[time,particle.depth,particle.lat,particle.lon]
+    particle.tau = fieldset.tau[time,particle.depth,particle.lat,particle.lon]
     
 """ Defining the particle class """
 
-class plastic_particle(JITParticle): #ScipyParticle): #
+class plastic_particle(ScipyParticle): #JITParticle): #
     u = Variable('u', dtype=np.float32,to_write=True)
     v = Variable('v', dtype=np.float32,to_write=True)
     w = Variable('w', dtype=np.float32,to_write=True)
+    tau = Variable('tau', dtype=np.float32,to_write=False)
     temp = Variable('temp',dtype=np.float32,to_write=False)
     density = Variable('density',dtype=np.float32,to_write=True)
     tpp3 = Variable('tpp3',dtype=np.float32,to_write=False)
@@ -274,7 +291,8 @@ filenames = {'U': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data
                  'euph_z': {'lon': mesh_mask, 'lat': mesh_mask, 'data': ppfiles},
                  'tpp3': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': ppfiles},
                  'cons_temperature': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles},
-                 'abs_salinity': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles}}
+                 'abs_salinity': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles},
+                 'tau': {'lon': mesh_mask, 'lat': mesh_mask, 'depth': wfiles[0], 'data': tsfiles}}
 
 variables = {'U': 'uo',
                  'V': 'vo',
@@ -284,7 +302,8 @@ variables = {'U': 'uo',
                  'euph_z': 'MED_XZE',
                  'tpp3': 'TPP3', # units: mmolN/m3/d 
                  'cons_temperature': 'potemp',
-                 'abs_salinity': 'salin'}
+                 'abs_salinity': 'salin',
+                 'tau': 'taum'}
 
 dimensions = {'U': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': 'time_counter'}, #time_centered
                   'V': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': 'time_counter'},
@@ -294,7 +313,8 @@ dimensions = {'U': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw', 'time': '
                   'euph_z': {'lon': 'glamf', 'lat': 'gphif','time': 'time_counter'},
                   'tpp3': {'lon': 'glamf', 'lat': 'gphif','depth': 'depthw', 'time': 'time_counter'},
                   'cons_temperature': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
-                  'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'}}
+                  'abs_salinity': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'},
+                  'tau': {'lon': 'glamf', 'lat': 'gphif', 'depth': 'depthw','time': 'time_counter'}}
     
 initialgrid_mask = dirread+'ORCA0083-N06_20070105d05U.nc'
 mask = xr.open_dataset(initialgrid_mask, decode_times=False)
@@ -361,9 +381,9 @@ for r_pl, rho_pl in zip(r_pls[1:], rho_pls[1:]):
 
 """ Kernal + Execution"""
 
-kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) +   
+kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) + pset.Kernel(kernel_kukulka_mixing)#pset.Kernel(periodicBC) +    
 
-outfile = '/home/dlobelle/Kooi_data/data_output/allrho/res_'+res+'/allr/tests/checkVs0_'+region+'_'+sizes+'_checkrho_3D_grid'+res+'_920kgm-3_'+str(round(simdays,2))+'days_startmon_'+mon+'_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+outfile = '/home/dlobelle/Kooi_data/data_output/allrho/res_'+res+'/allr/tests/kukulka_mix'+region+'_'+sizes+'_checkrho_3D_grid'+res+'_920kgm-3_'+str(round(simdays,2))+'days_startmon_'+mon+'_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
