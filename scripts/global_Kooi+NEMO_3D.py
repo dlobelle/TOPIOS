@@ -144,7 +144,7 @@ def Kooi(particle,fieldset,time):
     
 def DeleteParticle(particle, fieldset, time):
     """Kernel for deleting particles if they are out of bounds."""
-    print('particle is deleted') #print(particle.lon, particle.lat, particle.depth)
+    print('particle is deleted at lon = '+str(particle.lon)+', lat ='+str(particle.lat)+', depth ='+str(particle.depth)) #print(particle.lon, particle.lat, particle.depth)
     particle.delete() 
     
 def getclosest_ij(lats,lons,latpt,lonpt):     
@@ -197,17 +197,11 @@ if __name__ == "__main__":
                    help='start year for the run')
     p.add_argument('-loc', choices = ('global','eq_global','south_global','north_global','SAtl'), action = "store", dest = "loc",
                    help ='location where particles released')
-    p.add_argument('-r_pl', choices = ('1e-02', '1e-05', '1e-07'), action = "store", dest = "rpl",
-                   help ='radius or size of plastic')
-    p.add_argument('-rho_pl', choices = ('840', '920', '940'), action = "store", dest = "rhopl",
-                   help ='density of plastic')
                    
     args = p.parse_args()
     mon = args.mon
     yr = args.yr
     loc = args.loc
-    rpl = np.float32(args.rpl)
-    rhopl = np.float32(args.rhopl)
     
     """ Load particle release locations from plot_NEMO_landmask.ipynb """
     res = '2x2' 
@@ -305,10 +299,10 @@ if __name__ == "__main__":
     fieldset.add_field(SV, 'SV')
     
     
-    """ Defining the particle set """
+    """ Defining the particle set """   
     
-    rho_pls = [920, 920, 920, 940, 940, 940, 960, 960, 960]  # add/remove here if more needed
-    r_pls = [1e-7, 1e-5, 1e-2, 1e-7, 1e-5, 1e-2, 1e-7, 1e-5, 1e-2]  # add/remove here if more needed
+    rho_pls = [920, 920, 920, 920, 920, 920]  # add/remove here if more needed
+    r_pls = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7]  # add/remove here if more needed
 
     pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
                                  pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
@@ -316,9 +310,9 @@ if __name__ == "__main__":
                                  lat= lat_release, #36., 
                                  time = np.datetime64('%s-%s-01' % (yr0, mon)),
                                  depth = z_release,
-                                 r_pl = r_pls[0] * np.ones(lon_release.size),
-                                 rho_pl = rho_pls[0] * np.ones(lon_release.size))
-    
+                                 r_pl = r_pls[0] * np.ones(np.array(lon_release).size),
+                                 rho_pl = rho_pls[0] * np.ones(np.array(lon_release).size))
+
     for r_pl, rho_pl in zip(r_pls[1:], rho_pls[1:]):
         pset.add(ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
                                  pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
@@ -326,8 +320,8 @@ if __name__ == "__main__":
                                  lat= lat_release, #36., 
                                  time = np.datetime64('%s-%s-01' % (yr0, mon)),
                                  depth = z_release,
-                                 r_pl = r_pl * np.ones(lon_release.size),
-                                 rho_pl = rho_pl * np.ones(lon_release.size)))
+                                 r_pl = r_pl * np.ones(np.array(lon_release).size),
+                                 rho_pl = rho_pl * np.ones(np.array(lon_release).size)))
 
 
     """ Kernal + Execution"""
@@ -342,14 +336,12 @@ if __name__ == "__main__":
 
     kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
 
-    outfile = '/home/dlobelle/Kooi_data/data_output/allrho/res_'+res+'/allr/'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_allrho_allr_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+    outfile = '/home/dlobelle/Kooi_data/data_output/allrho/res_'+res+'/allr/algae10xless_'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_allrho_allr_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
     pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
-    pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
+    pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle, ErrorCode.ErrorInterpolation: DeleteParticle})
 
     pfile.close()
 
     print('Execution finished')
-    
-
