@@ -1,4 +1,4 @@
-# 20/04/20- Modifying Kooi+NEMO_NPacific_3D.py to release particles globally
+# Modifying Kooi+NEMO_NPacific_3D.py to release particles globally
 
 from parcels import FieldSet, ParticleSet, JITParticle, ScipyParticle, AdvectionRK4_3D, AdvectionRK4, ErrorCode, ParticleFile, Variable, Field, NestedField, VectorField, timer 
 from parcels.kernels.TEOSseawaterdensity import PolyTEOS10_bsq
@@ -25,7 +25,7 @@ warnings.filterwarnings("ignore")
 
 #------ Choose ------:
 simdays = 90 #10
-secsdt = 60 
+secsdt = 30 #60 
 hrsoutdt = 12
 
 """functions and kernels"""
@@ -33,15 +33,9 @@ hrsoutdt = 12
 def Kooi(particle,fieldset,time):  
     """
     Kernel to compute the vertical velocity (Vs) of particles due to changes in ambient algal concentrations, growth and death of attached algae based on Kooi et al. 2017 model 
-    """
-    #------ CHOOSE density and size of particles -----
-    #rho_pl = particle.rhopl  # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-    #print(rho_pl)
-    #r_pl = particle.rpl #1e-05    # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
-    
+    """  
     #------ Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
-    min_N2cell = 2656.0e-09 #[mgN cell-1] (from Menden-Deuer and Lessard 2000)
-    max_N2cell = 11.0e-09   #[mgN cell-1] 
+    
     med_N2cell = 356.04e-09 #[mgN cell-1] median value is used below (as done in Kooi et al. 2017)
       
     #------ Ambient algal concentration from MEDUSA's non-diatom + diatom phytoplankton 
@@ -52,7 +46,7 @@ def Kooi(particle,fieldset,time):
     if n2<0.: 
         aa = 0.
     else:
-        aa = n2                         # [no m-3] to compare to Kooi model    
+        aa = n2                        # [no m-3] to compare to Kooi model    
     
     #------ Primary productivity (algal growth) from MEDUSA TPP3 (no longer condition of only above euphotic zone, since not much diff in results)
     tpp0 = particle.tpp3              # [mmol N m-3 d-1]
@@ -70,7 +64,7 @@ def Kooi(particle,fieldset,time):
     t = particle.temp            # [oC]
     sw_visc = particle.sw_visc   # [kg m-1 s-1]
     kin_visc = particle.kin_visc # [m2 s-1]
-    rho_sw = particle.density    # [kg m-3]   #rho_sw     
+    rho_sw = particle.density    # [kg m-3]       
     a = particle.a               # [no. m-2 s-1]
     vs = particle.vs             # [m s-1]   
 
@@ -116,26 +110,27 @@ def Kooi(particle,fieldset,time):
 
     dn = 2. * (r_tot)                             # equivalent spherical diameter [m]
     delta_rho = (rho_tot - rho_sw)/rho_sw         # normalised difference in density between total plastic+bf and seawater[-]        
-    d = ((rho_tot - rho_sw) * g * dn**3.)/(rho_sw * kin_visc**2.) # [-]
-    
-    if dn > 5e9:
+    dstar = ((rho_tot - rho_sw) * g * dn**3.)/(rho_sw * kin_visc**2.) # [-]    
+        
+    if dstar > 5e9:
         w = 1000.
-    elif dn <0.05:
-        w = (d**2.) *1.71E-4
+    elif dstar <0.05:
+        w = (dstar**2.) *1.71E-4
     else:
-        w = 10.**(-3.76715 + (1.92944*math.log10(d)) - (0.09815*math.log10(d)**2.) - (0.00575*math.log10(d)**3.) + (0.00056*math.log10(d)**4.))
+        w = 10.**(-3.76715 + (1.92944*math.log10(dstar)) - (0.09815*math.log10(dstar)**2.) - (0.00575*math.log10(dstar)**3.) + (0.00056*math.log10(dstar)**4.))
     
     #------ Settling of particle -----
-    if z >= 4000.: 
-        vs = 0 
-    elif delta_rho > 0:
+    if delta_rho > 0: # sinks 
         vs = (g * kin_visc * w * delta_rho)**(1./3.)
-    else: 
+    else: #rises 
         a_del_rho = delta_rho*-1.
         vs = -1.*(g * kin_visc * w * a_del_rho)**(1./3.)  # m s-1
     
-    z0 = z + vs * particle.dt
-    if z0 <0.6: # NEMO's 'surface depth'
+    particle.vs_init = vs
+    
+    z0 = z + vs * particle.dt 
+    if z0 <=0.6 or z0 >= 4000.: # NEMO's 'surface depth'
+        vs = 0
         particle.depth = 0.6
     else:          
         particle.depth += vs * particle.dt 
@@ -144,7 +139,7 @@ def Kooi(particle,fieldset,time):
     
 def DeleteParticle(particle, fieldset, time):
     """Kernel for deleting particles if they are out of bounds."""
-    print('particle is deleted at lon = '+str(particle.lon)+', lat ='+str(particle.lat)+', depth ='+str(particle.depth)) #print(particle.lon, particle.lat, particle.depth)
+    print('particle is deleted at lon = '+str(particle.lon)+', lat ='+str(particle.lat)+', depth ='+str(particle.depth)) 
     particle.delete() 
     
 def getclosest_ij(lats,lons,latpt,lonpt):     
@@ -152,12 +147,6 @@ def getclosest_ij(lats,lons,latpt,lonpt):
     dist_sq = (lats-latpt)**2 + (lons-lonpt)**2                 # find squared distance of every point on grid
     minindex_flattened = dist_sq.argmin()                       # 1D index of minimum dist_sq element
     return np.unravel_index(minindex_flattened, lats.shape)     # Get 2D index for latvals and lonvals arrays from 1D index
-
-def periodicBC(particle, fieldset, time):
-    if particle.lon < 0.:
-        particle.lon += 360.
-    elif particle.lon >= 360.:
-        particle.lon -= 360.
         
 def Profiles(particle, fieldset, time):  
     particle.temp = fieldset.cons_temperature[time, particle.depth,particle.lat,particle.lon]  
@@ -174,7 +163,7 @@ def Profiles(particle, fieldset, time):
 class plastic_particle(JITParticle): #ScipyParticle): #
     u = Variable('u', dtype=np.float32,to_write=False)
     v = Variable('v', dtype=np.float32,to_write=False)
-    w = Variable('w', dtype=np.float32,to_write=False)
+    w = Variable('w', dtype=np.float32,to_write=True)
     temp = Variable('temp',dtype=np.float32,to_write=False)
     density = Variable('density',dtype=np.float32,to_write=False)
     tpp3 = Variable('tpp3',dtype=np.float32,to_write=False)
@@ -184,10 +173,12 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
     sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
     a = Variable('a',dtype=np.float32,to_write=False)
-    vs = Variable('vs',dtype=np.float32,to_write=True)    
+    rho_tot = Variable('rho_tot',dtype=np.float32,to_write=False) 
+    r_tot = Variable('r_tot',dtype=np.float32,to_write=False)
+    vs = Variable('vs',dtype=np.float32,to_write=True)   
+    vs_init = Variable('vs_init',dtype=np.float32,to_write=True)
     r_pl = Variable('r_pl',dtype=np.float32,to_write='once')   
-    rho_pl = Variable('rho_pl',dtype=np.float32,to_write='once')   
-
+    rho_pl = Variable('rho_pl',dtype=np.float32,to_write='once')  
     
 if __name__ == "__main__":     
     p = ArgumentParser(description="""choose starting month and year""")
@@ -204,11 +195,15 @@ if __name__ == "__main__":
     loc = args.loc
     
     """ Load particle release locations from plot_NEMO_landmask.ipynb """
-    res = '2x2' 
+    if loc == 'SAtl':
+        res = '10x10'
+    else:
+        res = '2x2'
+        
     with open('/home/dlobelle/Kooi_data/data_input/mask_'+loc+'_NEMO_'+res+'_lat_lon.pickle', 'rb') as f:  
         lat_release,lon_release = pickle.load(f)
 
-    z_release = np.tile(1,len(lat_release))
+    z_release = np.tile(0.6,len(lat_release))
 
     minlat = min(lat_release)
     maxlat = max(lat_release)
@@ -301,8 +296,8 @@ if __name__ == "__main__":
     
     """ Defining the particle set """   
     
-    rho_pls = [920, 920, 920, 920, 920, 920]  # add/remove here if more needed
-    r_pls = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7]  # add/remove here if more needed
+    rho_pls = [30, 30, 30, 30, 30, 840, 840, 840, 840, 840, 920, 920, 920, 920, 920]  # add/remove here if more needed
+    r_pls = [1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7]  # add/remove here if more needed
 
     pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
                                  pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
@@ -311,7 +306,9 @@ if __name__ == "__main__":
                                  time = np.datetime64('%s-%s-01' % (yr0, mon)),
                                  depth = z_release,
                                  r_pl = r_pls[0] * np.ones(np.array(lon_release).size),
-                                 rho_pl = rho_pls[0] * np.ones(np.array(lon_release).size))
+                                 rho_pl = rho_pls[0] * np.ones(np.array(lon_release).size),
+                                 r_tot = r_pls[0] * np.ones(np.array(lon_release).size),
+                                 rho_tot = rho_pls[0] * np.ones(np.array(lon_release).size))
 
     for r_pl, rho_pl in zip(r_pls[1:], rho_pls[1:]):
         pset.add(ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
@@ -321,7 +318,9 @@ if __name__ == "__main__":
                                  time = np.datetime64('%s-%s-01' % (yr0, mon)),
                                  depth = z_release,
                                  r_pl = r_pl * np.ones(np.array(lon_release).size),
-                                 rho_pl = rho_pl * np.ones(np.array(lon_release).size)))
+                                 rho_pl = rho_pl * np.ones(np.array(lon_release).size),
+                                 r_tot = r_pl * np.ones(np.array(lon_release).size),
+                                 rho_tot = rho_pl * np.ones(np.array(lon_release).size)))
 
 
     """ Kernal + Execution"""
@@ -334,9 +333,9 @@ if __name__ == "__main__":
     elif mon=='09':
         s = 'SON'
 
-    kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
+    kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi)
 
-    outfile = '/home/dlobelle/Kooi_data/data_output/allrho/res_'+res+'/allr/algae10xless_'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_allrho_allr_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+    outfile = '/home/dlobelle/Kooi_data/data_output/allrho/res_'+res+'/allr/'+loc+'_'+s+'_'+yr+'_3D_grid'+res+'_allrho_allr_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
     pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
