@@ -23,21 +23,21 @@ import math as math
 from argparse import ArgumentParser
 warnings.filterwarnings("ignore")
 
-#------ Fieldset grid is 50x50 deg in North Pacific ------
-minlat = 10 
+#------ Fieldset grid is 90x70 deg in North Pacific ------
+minlat = 0 
 maxlat = 60 
-minlon = -170 #75 
-maxlon = -120 #45 
+minlon = 110 # -180 #75 
+maxlon = -80 #45 
 
-#------ Release particles on a 10x10 deg grid in middle of the 50x50 fieldset grid (30:40N and -140:-150 E) and 1m depth, Kooi study location was 20N, -153E ------
-lat_release0 = np.tile(np.linspace(minlat+20,maxlat-22,5),[5,1]) 
+#------ Release particles on a 10x10 deg grid in middle of the 50x50 fieldset grid (20:30N and -140:-150 E) and 1m depth, Kooi study location was 20N, -153E ------
+lat_release0 = np.tile(np.linspace(28,36,5),[5,1]) #(20,28,5),[5,1]) 
 lat_release = lat_release0.T 
-lon_release = np.tile(np.linspace(minlon+20,maxlon-22,5),[5,1]) 
-z_release = np.tile(1,[5,5])
+lon_release = np.tile(np.linspace(-135,-143,5),[5,1]) #(-140,-148,5),[5,1]) 
+z_release = np.tile(0.6,[5,5])
 #time0 = 0
 
 #------ Choose ------:
-simdays = 1095 #10
+simdays = 1000 #10
 secsdt = 60 
 hrsoutdt = 12
 
@@ -46,15 +46,9 @@ hrsoutdt = 12
 def Kooi(particle,fieldset,time):  
     """
     Kernel to compute the vertical velocity (Vs) of particles due to changes in ambient algal concentrations, growth and death of attached algae based on Kooi et al. 2017 model 
-    """
-    #------ CHOOSE density and size of particles -----
-    #rho_pl = particle.rhopl  # density of plastic (kg m-3): DEFAULT FOR FIG 1: 920 but full range is: 840, 920, 940, 1050, 1380 (last 2 are initially non-buoyant)
-    #print(rho_pl)
-    #r_pl = particle.rpl #1e-05    # radius of plastic (m): DEFAULT FOR FIG 1: 10-3 to 10-6 included but full range is: 10 mm to 0.1 um or 10-2 to 10-7   
-    
+    """  
     #------ Nitrogen to cell ratios for ambient algal concentrations ('aa') and algal growth ('mu_aa') from NEMO output (no longer using N:C:AA (Redfield ratio), directly N:AA from Menden-Deuer and Lessard 2000)     
-    min_N2cell = 2656.0e-09 #[mgN cell-1] (from Menden-Deuer and Lessard 2000)
-    max_N2cell = 11.0e-09   #[mgN cell-1] 
+    
     med_N2cell = 356.04e-09 #[mgN cell-1] median value is used below (as done in Kooi et al. 2017)
       
     #------ Ambient algal concentration from MEDUSA's non-diatom + diatom phytoplankton 
@@ -83,7 +77,7 @@ def Kooi(particle,fieldset,time):
     t = particle.temp            # [oC]
     sw_visc = particle.sw_visc   # [kg m-1 s-1]
     kin_visc = particle.kin_visc # [m2 s-1]
-    rho_sw = particle.density    # [kg m-3]   #rho_sw     
+    rho_sw = particle.density    # [kg m-3]       
     a = particle.a               # [no. m-2 s-1]
     vs = particle.vs             # [m s-1]   
 
@@ -129,26 +123,27 @@ def Kooi(particle,fieldset,time):
 
     dn = 2. * (r_tot)                             # equivalent spherical diameter [m]
     delta_rho = (rho_tot - rho_sw)/rho_sw         # normalised difference in density between total plastic+bf and seawater[-]        
-    d = ((rho_tot - rho_sw) * g * dn**3.)/(rho_sw * kin_visc**2.) # [-]
-    
-    if dn > 5e9:
+    dstar = ((rho_tot - rho_sw) * g * dn**3.)/(rho_sw * kin_visc**2.) # [-]    
+        
+    if dstar > 5e9:
         w = 1000.
-    elif dn <0.05:
-        w = (d**2.) *1.71E-4
+    elif dstar <0.05:
+        w = (dstar**2.) *1.71E-4
     else:
-        w = 10.**(-3.76715 + (1.92944*math.log10(d)) - (0.09815*math.log10(d)**2.) - (0.00575*math.log10(d)**3.) + (0.00056*math.log10(d)**4.))
+        w = 10.**(-3.76715 + (1.92944*math.log10(dstar)) - (0.09815*math.log10(dstar)**2.) - (0.00575*math.log10(dstar)**3.) + (0.00056*math.log10(dstar)**4.))
     
     #------ Settling of particle -----
-    if z >= 4000.: 
-        vs = 0 
-    elif delta_rho > 0:
+    if delta_rho > 0: # sinks 
         vs = (g * kin_visc * w * delta_rho)**(1./3.)
-    else: 
+    else: #rises 
         a_del_rho = delta_rho*-1.
         vs = -1.*(g * kin_visc * w * a_del_rho)**(1./3.)  # m s-1
     
-    z0 = z + vs * particle.dt
-    if z0 <0.6: # NEMO's 'surface depth'
+    particle.vs_init = vs
+    
+    z0 = z + vs * particle.dt 
+    if z0 <=0.6 or z0 >= 4000.: # NEMO's 'surface depth'
+        vs = 0
         particle.depth = 0.6
     else:          
         particle.depth += vs * particle.dt 
@@ -187,7 +182,7 @@ def Profiles(particle, fieldset, time):
 class plastic_particle(JITParticle): #ScipyParticle): #
     u = Variable('u', dtype=np.float32,to_write=False)
     v = Variable('v', dtype=np.float32,to_write=False)
-    w = Variable('w', dtype=np.float32,to_write=False)
+    w = Variable('w', dtype=np.float32,to_write=True)
     temp = Variable('temp',dtype=np.float32,to_write=False)
     density = Variable('density',dtype=np.float32,to_write=False)
     tpp3 = Variable('tpp3',dtype=np.float32,to_write=False)
@@ -197,37 +192,12 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
     sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
     a = Variable('a',dtype=np.float32,to_write=False)
-    vs = Variable('vs',dtype=np.float32,to_write=True)    
+    rho_tot = Variable('rho_tot',dtype=np.float32,to_write=False) 
+    r_tot = Variable('r_tot',dtype=np.float32,to_write=False)
+    vs = Variable('vs',dtype=np.float32,to_write=True)   
+    vs_init = Variable('vs_init',dtype=np.float32,to_write=True)
     r_pl = Variable('r_pl',dtype=np.float32,to_write='once')   
-    rho_pl = Variable('rho_pl',dtype=np.float32,to_write='once')   
-
-    
-# if __name__ == "__main__":     
-#     p = ArgumentParser(description="""choose starting month and year""")
-#     p.add_argument('-mon', choices = ('12','03','06','09'), action="store", dest="mon", 
-#                    help='start month for the run')
-#     p.add_argument('-yr', choices = ('2000','2001','2002','2003','2004','2005','2006','2007','2008','2009','2010'), action="store", dest="yr",
-#                    help='start year for the run')
-#     p.add_argument('-loc', choices = ('global','eq_global','south_global','north_global','SAtl'), action = "store", dest = "loc",
-#                    help ='location where particles released')
-                   
-#     args = p.parse_args()
-#     mon = args.mon
-#     yr = args.yr
-#     loc = args.loc
-    
-#     """ Load particle release locations from plot_NEMO_landmask.ipynb """
-#     res = '2x2' 
-#     with open('/home/dlobelle/Kooi_data/data_input/mask_'+loc+'_NEMO_'+res+'_lat_lon.pickle', 'rb') as f:  
-#         lat_release,lon_release = pickle.load(f)
-
-#     z_release = np.tile(1,len(lat_release))
-
-#     minlat = min(lat_release)
-#     maxlat = max(lat_release)
-#     minlon = min(lon_release)
-#     maxlon = max(lon_release)
-    
+    rho_pl = Variable('rho_pl',dtype=np.float32,to_write='once')     
     
 """ Defining the fieldset""" 
 
@@ -235,27 +205,17 @@ dirread = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/means/
 dirread_bgc = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA_BGC/ORCA0083-N006/means/'  
 dirread_mesh = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/domain/'  
 
-    #if mon =='12':
 res = '2x2' 
 mon = '01'
-yr1 = '2002'
+yr1 = '2004'
 yr2 = str(int(yr1)+1)
 yr3 = str(int(yr1)+2)
 ufiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05U.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05U.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05U.nc')))
 vfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05V.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05V.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05V.nc')))
 wfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05W.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05W.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05W.nc')))
-pfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05P.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05P.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05P.nc')))
-ppfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05D.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05D.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05D.nc')))
+pfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05P.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05P.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr3+'*d05P.nc')))
+ppfiles = (sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr1+'*d05D.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr2+'*d05D.nc'))+ sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr3+'*d05D.nc')))
 tsfiles = (sorted(glob(dirread+'ORCA0083-N06_'+yr1+'*d05T.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr2+'*d05T.nc'))+ sorted(glob(dirread+'ORCA0083-N06_'+yr3+'*d05T.nc')))
-
-#     else:
-#         yr0 = yr
-#         ufiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05U.nc')) 
-#         vfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05V.nc')) 
-#         wfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05W.nc')) 
-#         pfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+'*d05P.nc')) 
-#         ppfiles = sorted(glob(dirread_bgc+'ORCA0083-N06_'+yr+'*d05D.nc')) 
-#         tsfiles = sorted(glob(dirread+'ORCA0083-N06_'+yr+'*d05T.nc')) 
         
 mesh_mask = dirread_mesh+'coordinates.nc'
 
@@ -297,16 +257,13 @@ latvals = Lat[:]; lonvals = Lon[:] # extract lat/lon values to numpy arrays
 iy_min, ix_min = getclosest_ij(latvals, lonvals, minlat, minlon) #minlat-5
 iy_max, ix_max = getclosest_ij(latvals, lonvals, maxlat, maxlon) #minlat+5
 
-indices = {'lat': range(iy_min, iy_max)}  # 'depth': range(0, 2000) 'lon': range(ix_min, ix_max), 
+indices = {'lat': range(iy_min, iy_max),'lon': range(ix_min, ix_max)}  # 'depth': range(0, 2000)  
 
 
 chs = {'time_counter': 1, 'depthu': 25, 'depthv': 25, 'depthw': 25, 'deptht': 25, 'y': 200, 'x': 200} # for Parcels 2.1.5, can now define chunksize instead of indices in fieldset
 
 fieldset = FieldSet.from_nemo(filenames, variables, dimensions, allow_time_extrapolation=False, field_chunksize=chs, indices=indices) #, allow_time_extrapolation=True or False
 
-
-    #lons = fieldset.U.lon
-    #lats = fieldset.U.lat
 depths = fieldset.U.depth
 
     #------ Kinematic viscosity and dynamic viscosity not available in MEDUSA so replicating Kooi's profiles at all grid points ------
@@ -321,8 +278,8 @@ fieldset.add_field(SV, 'SV')
     
 """ Defining the particle set """   
     
-rho_pls = [920, 920, 920, 920, 920, 920]  # add/remove here if more needed
-r_pls = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7]  # add/remove here if more needed
+rho_pls = [30, 30, 30, 30, 30, 840, 840, 840, 840, 840, 920, 920, 920, 920, 920]  # add/remove here if more needed
+r_pls = [1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7]  # add/remove here if more needed
 
 pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
                                  pclass=plastic_particle,   # the type of particles (JITParticle or ScipyParticle)
@@ -331,7 +288,9 @@ pset = ParticleSet.from_list(fieldset=fieldset,         # the fields on which th
                                  time = np.datetime64('%s-%s-05' % (yr1, mon)),
                                  depth = z_release,
                                  r_pl = r_pls[0] * np.ones(np.array(lon_release).size),
-                                 rho_pl = rho_pls[0] * np.ones(np.array(lon_release).size))
+                                 rho_pl = rho_pls[0] * np.ones(np.array(lon_release).size),
+                                 r_tot = r_pls[0] * np.ones(np.array(lon_release).size),
+                                 rho_tot = rho_pls[0] * np.ones(np.array(lon_release).size))
 
 for r_pl, rho_pl in zip(r_pls[1:], rho_pls[1:]):
     pset.add(ParticleSet.from_list(fieldset=fieldset,         # the fields on which the particles are advected
@@ -341,18 +300,11 @@ for r_pl, rho_pl in zip(r_pls[1:], rho_pls[1:]):
                         time = np.datetime64('%s-%s-05' % (yr1, mon)),
                         depth = z_release,
                         r_pl = r_pl * np.ones(np.array(lon_release).size),
-                        rho_pl = rho_pl * np.ones(np.array(lon_release).size)))
+                        rho_pl = rho_pl * np.ones(np.array(lon_release).size),
+                        r_tot = r_pl * np.ones(np.array(lon_release).size),
+                        rho_tot = rho_pl * np.ones(np.array(lon_release).size)))
 
-
-    """ Kernal + Execution"""
-#     if mon=='12':
-#         s = 'DJF'
-#     elif mon=='03':
-#         s = 'MAM'
-#     elif mon=='06':
-#         s = 'JJA'
-#     elif mon=='09':
-#         s = 'SON'
+""" Kernal + Execution"""
 
 kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
 
