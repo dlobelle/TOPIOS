@@ -23,13 +23,13 @@ import math as math
 from argparse import ArgumentParser
 warnings.filterwarnings("ignore")
 
-#------ Fieldset grid is 90x70 deg in North Pacific ------
-minlat = 0 
-maxlat = 60 
-minlon = 110 # -180 #75 
-maxlon = -80 #45 
+#------ Fieldset grid is smaller now (no longer 90x70 deg) since only looking for Ts, not full trajectories ------
+minlat = 20 #0 
+maxlat = 44 #60 
+minlon = -155 #110 
+maxlon = -125 #-80 
 
-#------ Release particles on a 10x10 deg grid in middle of the 50x50 fieldset grid (20:30N and -140:-150 E) and 1m depth, Kooi study location was 20N, -153E ------
+#------ Release particles on a 10x10 deg grid in middle of the 50x50 fieldset grid (20:30N and -140:-150 E) and 0.6m depth, Kooi study location was 20N, -153E ------
 lat_release0 = np.tile(np.linspace(28,36,5),[5,1]) #(20,28,5),[5,1]) 
 lat_release = lat_release0.T 
 lon_release = np.tile(np.linspace(-135,-143,5),[5,1]) #(-140,-148,5),[5,1]) 
@@ -149,6 +149,81 @@ def Kooi(particle,fieldset,time):
         particle.depth += vs * particle.dt 
 
     particle.vs = vs
+
+def Kooi_no_biofouling(particle,fieldset,time):  
+    """
+    Kernel to compute the vertical velocity (Vs) of particles due to their different sizes and densities (removed all effects of changes in ambient algal concentrations, growth and death of attached algae)- based on Kooi et al. 2017 model 
+    """
+    
+    #------ Profiles from MEDUSA or Kooi theoretical profiles -----
+    z = particle.depth           # [m]
+    t = particle.temp            # [oC]
+    kin_visc = particle.kin_visc # kinematic viscosity[m2 s-1]
+    rho_sw = particle.density    # seawater density[kg m-3]       
+    vs = particle.vs             # vertical velocity[m s-1]   
+
+    #------ Constants -----
+    g = 7.32e10/(86400.**2.)    # gravitational acceleration (m d-2), now [s-2]
+    
+    #------ Volumes -----
+    v_pl = (4./3.)*math.pi*particle.r_pl**3.             # volume of plastic [m3]
+    theta_pl = 4.*math.pi*particle.r_pl**2.              # surface area of plastic particle [m2]    
+
+    #------ Diffusivity -----
+    r_tot = particle.r_pl #+ t_bf                               # total radius [m]
+    rho_tot = (particle.r_pl**3. * particle.rho_pl)/(particle.r_pl)**3. # total density [kg m-3]
+
+    dn = 2. * (r_tot)                             # equivalent spherical diameter [m]
+    delta_rho = (rho_tot - rho_sw)/rho_sw         # normalised difference in density between total plastic+bf and seawater[-]        
+    dstar = ((rho_tot - rho_sw) * g * dn**3.)/(rho_sw * kin_visc**2.) # dimensional diameter[-]
+            
+    if dstar > 5e9:
+        w = 1000.
+    elif dstar <0.05:
+        w = (dstar**2.) *1.71E-4
+    else:
+        w = 10.**(-3.76715 + (1.92944*math.log10(dstar)) - (0.09815*math.log10(dstar)**2.) - (0.00575*math.log10(dstar)**3.) + (0.00056*math.log10(dstar)**4.))
+        
+    #------ Settling of particle -----
+
+    if delta_rho > 0: # sinks 
+        vs = (g * kin_visc * w * delta_rho)**(1./3.)
+    else: #rises 
+        a_del_rho = delta_rho*-1.
+        vs = -1.*(g * kin_visc * w * a_del_rho)**(1./3.)  # m s-1
+    
+    particle.vs_init = vs
+    z0 = z + vs * particle.dt 
+    if z0 <=0.6 or z0 >= 4000.: # NEMO's 'surface depth'
+        vs = 0
+        particle.depth = 0.6
+    else:          
+        particle.depth += vs * particle.dt 
+
+    particle.vs = vs
+    particle.rho_tot = rho_tot
+    particle.r_tot = r_tot
+    particle.delta_rho = delta_rho
+    
+def AdvectionRK4_3D_vert(particle, fieldset, time):
+    """Advection of particles using fourth-order Runge-Kutta integration including vertical velocity.
+    Function needs to be converted to Kernel object before execution"""
+    (w1) = fieldset.W[time, particle.depth, particle.lat, particle.lon]
+    #lon1 = particle.lon + u1*.5*particle.dt
+    #lat1 = particle.lat + v1*.5*particle.dt
+    dep1 = particle.depth + w1*.5*particle.dt
+    (w2) = fieldset.W[time + .5 * particle.dt, dep1, particle.lat, particle.lon]
+    #lon2 = particle.lon + u2*.5*particle.dt
+    #lat2 = particle.lat + v2*.5*particle.dt
+    dep2 = particle.depth + w2*.5*particle.dt
+    (w3) = fieldset.W[time + .5 * particle.dt, dep2, particle.lat, particle.lon]
+    #lon3 = particle.lon + u3*particle.dt
+    #lat3 = particle.lat + v3*particle.dt
+    dep3 = particle.depth + w3*particle.dt
+    (w4) = fieldset.W[time + particle.dt, dep3, particle.lat, particle.lon]
+    #particle.lon += particle.lon #(u1 + 2*u2 + 2*u3 + u4) / 6. * particle.dt
+    #particle.lat += particle.lat #lats[1,1] #(v1 + 2*v2 + 2*v3 + v4) / 6. * particle.dt
+    particle.depth += (w1 + 2*w2 + 2*w3 + w4) / 6. * particle.dt
     
 def DeleteParticle(particle, fieldset, time):
     """Kernel for deleting particles if they are out of bounds."""
@@ -191,7 +266,7 @@ class plastic_particle(JITParticle): #ScipyParticle): #
     nd_phy = Variable('nd_phy',dtype=np.float32,to_write=False)    
     kin_visc = Variable('kin_visc',dtype=np.float32,to_write=False)
     sw_visc = Variable('sw_visc',dtype=np.float32,to_write=False)    
-    a = Variable('a',dtype=np.float32,to_write=False)
+    a = Variable('a',dtype=np.float32,to_write=True)
     rho_tot = Variable('rho_tot',dtype=np.float32,to_write=False) 
     r_tot = Variable('r_tot',dtype=np.float32,to_write=False)
     vs = Variable('vs',dtype=np.float32,to_write=True)   
@@ -306,9 +381,9 @@ for r_pl, rho_pl in zip(r_pls[1:], rho_pls[1:]):
 
 """ Kernal + Execution"""
 
-kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(periodicBC) + 
+kernels = pset.Kernel(AdvectionRK4) + pset.Kernel(PolyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi) #pset.Kernel(AdvectionRK4_3D_vert) pset.Kernel(periodicBC) + 
 
-outfile = '/home/dlobelle/Kooi_data/data_output/allrho/res_'+res+'/allr/3yr_NPac_3D_grid'+res+'_allrho_allr_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
+outfile = '/home/dlobelle/Kooi_data/data_output/allrho/res_'+res+'/allr/3yr_uvAdvOnly_NPac_3D_grid'+res+'_allrho_allr_'+str(round(simdays,2))+'days_'+str(secsdt)+'dtsecs_'+str(round(hrsoutdt,2))+'hrsoutdt' 
 
 pfile= ParticleFile(outfile, pset, outputdt=delta(hours = hrsoutdt))
 
